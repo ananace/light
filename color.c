@@ -56,7 +56,7 @@ int rgb2hsv(const rgb_t* rgb, hsv_t* hsv)
 	rgbMax = rgb->r > rgb->g ? (rgb->r > rgb->b ? rgb->r : rgb->b) : (rgb->g > rgb->b ? rgb->g : rgb->b);
 
 	hsv->v = rgbMax;
-	if (rgbMax == 0)
+	if (rgbMax == 0 || rgbMax == rgbMin)
 	{
 		hsv->h = 0;
 		hsv->s = 0;
