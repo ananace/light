@@ -1,5 +1,51 @@
 #include "color.h"
 
+#include <math.h>
+
+#define CLAMP(a, min, max) (a < min ? min : (a > max ? max : a))
+
+int temperature2rgb(unsigned int temp, rgb_t* rgb)
+{
+	temp = CLAMP(temp, 1000, 40000);
+
+	float calc;
+	unsigned short frac = temp / 100;
+	if (frac <= 66)
+		rgb->r = 255;
+	else
+	{
+		calc = frac - 60;
+		calc = 329.698727446f * fmod(calc, -0.1332047592f);
+		rgb->r = CLAMP(calc, 0, 255);
+	}
+
+	if (frac <= 66)
+	{
+		calc = frac;
+		calc = 99.4708025861f * log(calc) - 161.1195681661f;
+		rgb->g = CLAMP(calc, 0, 255);
+	}
+	else
+	{
+		calc = frac - 60;
+		calc = 288.1221695283f * fmod(calc, -0.0755148492f);
+		rgb->g = CLAMP(calc, 0, 255);
+	}
+
+	if (frac >= 66)
+		rgb->b = 255;
+	else if (frac <= 19)
+		rgb->b = 0;
+	else
+	{
+		calc = frac - 10;
+		calc = 138.5177312231f * log(calc) - 305.0447927307f;
+		rgb->b = CLAMP(calc, 0, 255);
+	}
+
+	return 0;
+}
+
 int hsv2rgb(const hsv_t* hsv, rgb_t* rgb)
 {
 	unsigned char region, remainder, p, q, t;
@@ -48,6 +94,7 @@ int hsv2rgb(const hsv_t* hsv, rgb_t* rgb)
 
 	return 0;
 }
+
 int rgb2hsv(const rgb_t* rgb, hsv_t* hsv)
 {
 	unsigned char rgbMin, rgbMax;

@@ -179,14 +179,14 @@ int parse_request(int fd, http_req_t* req)
 		query = NULL;
 
 	req->method = malloc(strlen(method) + 1);
-	strcpy(req->method, method);
+	strncpy(req->method, method, 255);
 	req->path = malloc(strlen(url) + 1);
-	strcpy(req->path, url);
+	strncpy(req->path, url, 255);
 
 	if (query != NULL)
 	{
 		req->query = malloc(strlen(query) + 1);
-		strcpy(req->query, query);
+		strncpy(req->query, query, 255);
 	}
 	else
 		req->query = NULL;
@@ -210,7 +210,7 @@ int parse_request(int fd, http_req_t* req)
 		old = buf[13];
 		buf[13] = 0;
 		if (strcasecmp(buf, "Content-Type:") == 0)
-			strcpy(content_type, &(buf[14]));
+			strncpy(content_type, &(buf[14]), 255);
 		buf[13] = old;
 	}
 	while (chars > 0 && strcmp("\n", buf));
@@ -222,10 +222,17 @@ int parse_request(int fd, http_req_t* req)
 		req->content_type = malloc(strlen(content_type));
 		strncpy(req->content_type, content_type, strlen(content_type) - 1);
 
-		char* content_buffer = malloc(content_length);
-		chars = recv(fd, content_buffer, content_length, 0);
+		if (content_length == 0)
+		{
+			req->content = NULL;
+		}
+		else
+		{
+			char* content_buffer = malloc(content_length);
+			chars = recv(fd, content_buffer, content_length, 0);
 
-		req->content = content_buffer;
+			req->content = content_buffer;
+		}
 	}
 
 	return 0;
@@ -233,7 +240,7 @@ int parse_request(int fd, http_req_t* req)
 
 int get_line(int fd, char* buf, size_t len)
 {
-	int i = 0;
+	size_t i = 0;
 	char c = '\0';
 	int n;
 

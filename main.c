@@ -1,5 +1,5 @@
 #include "http.h"
-#include "spi.h"
+#include "board.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -8,35 +8,121 @@
 
 int running;
 http_t server;
+board_t board;
 
-void sigint(int _)
+void sigint(int sig)
 {
+	(void)sig;
+
 	running = 0;
 	http_close(&server);
+	board_cleanup(&board);
 }
 
 int main(int argc, char** argv)
 {
-	uint16_t port = 4567;
-	uint32_t speed = 100000;
-	uint8_t id = 0x90;
-
-	if (argc > 1)
+	struct
 	{
-		int i;
-		for (i = 1; i < argc; ++i)
+		uint16_t port;
+
+		union {
+			struct {
+				uint32_t speed;
+				uint8_t id;
+			} spi;
+			struct {
+				uint8_t cpin,
+					dpin,
+					len;
+			} p9813;
+		};
+	} args;
+	memset(&args, 0, sizeof(args));
+
+	if (argc < 1)
+		return -1;
+
+	uint8_t mode = 255;
+
+	int i;
+	for (i = 1; i < argc; ++i)
+	{
+		if (strcmp(argv[i], "-S") == 0 || strcmp(argv[i], "--spi") == 0)
+			mode = 0;
+		else if (strcmp(argv[i], "-P") == 0 || strcmp(argv[i], "--p9813") == 0)
+			mode = 1;
+		else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--port") == 0)
+			args.port = atoi(argv[++i]);
+		else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
+			mode = 254;
+
+		else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--hz") == 0)
+			args.spi.speed = atoi(argv[++i]);
+		else if (strcmp(argv[i], "-i") == 0 || strcmp(argv[i], "--id") == 0)
+			args.spi.id = atoi(argv[++i]);
+
+		else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--clock") == 0)
+			args.p9813.cpin = atoi(argv[++i]);
+		else if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--data") == 0)
+			args.p9813.dpin = atoi(argv[++i]);
+		else if (strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "--count") == 0)
+			args.p9813.len = atoi(argv[++i]);
+	}
+	if (args.port == 0) args.port = 4567;
+
+	if (mode == 0)
+	{
+		if (args.spi.speed == 0) args.spi.speed = 100000;
+		if (args.spi.id == 0) args.spi.id = 0x90;
+
+		if (board_init_spi(&board, 0, args.spi.speed) < 0)
 		{
-			if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--port") == 0)
-				port = atoi(argv[++i]);
-			else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--hz") == 0)
-				speed = atoi(argv[++i]);
-			else if (strcmp(argv[i], "-i") == 0 || strcmp(argv[i], "--id") == 0)
-				id = atoi(argv[++i]);
+			puts("Failed to connect to light board, check SPI bus?");
+			return -1;
 		}
+		board.spi.id = args.spi.id;
+
+		printf("LED board #%i connected as %i with mode %i, bpw %i, speed %iHz\n", board.spi.id, board.spi.fd, board.spi.mode, board.spi.bpw, board.spi.speed);
+
+		if (board_set_pwm(&board) < 0)
+		{
+			puts("Failed to set PWM on board");
+			return -1;
+		}
+	}
+	else if (mode == 1)
+	{
+		if (args.p9813.len == 0) args.p9813.len = 1;
+
+		if (board_init_p9813(&board, args.p9813.cpin, args.p9813.dpin, args.p9813.len))
+		{
+			puts("Failed to connect to light board, check pins?");
+			return -1;
+		}
+
+		printf("LED board chain of %i connected on pins %i/%i\n", args.p9813.len, args.p9813.cpin, args.p9813.dpin);
+	}
+	else
+	{
+		printf("Usage: %s [OPTIONS...]\n\n"
+		       "Args:\n"
+		       "  -S --spi        Use SPI connected BitWizard board\n"
+		       "  -P --p9813      Use P9813 board\n"
+		       "  -p --port PORT  Specify the HTTP server port to use\n"
+		       "  -h --help       Display this text\n\n"
+		       "SPI args:\n"
+		       "  -h --hz HZ      Change the communication hertz (default 100 000)\n"
+		       "  -i --id ID      Change the board ID (default 0x90)\n\n"
+		       "P9813 args:\n"
+		       "  -c --clock PIN  The pin ID to use for the clock signal\n"
+		       "  -d --data PIN   The pin ID to use for the data signal\n"
+		       "  -n --count NUM  The number of controllers that are chained\n",
+		       argv[0]);
+		return mode == 255 ? -1 : 0;
 	}
 
 	memset(&server, 0, sizeof(server));
-	if (http_init(&server, port) < 0)
+	if (http_init(&server, args.port) < 0)
 	{
 		puts("Failed to open socket, port in use?");
 		return -1;
@@ -45,21 +131,6 @@ int main(int argc, char** argv)
 	server.name = "TheLightMeister v0.1";
 	printf("Server running on http://localhost:%i/\n", server.port);
 
-	board_t board;
-	board.id = id;
-	if (board_init(&board, 0, speed) < 0)
-	{
-		puts("Failed to connect to light board, check SPI bus?");
-		return -1;
-	}
-
-	printf("LED board #%i connected as %i with mode %i, bpw %i, speed %iHz\n", board.id, board.fd, board.mode, board.bpw, board.speed);
-
-	if (board_set_pwm(&board) < 0)
-	{
-		puts("Failed to set PWM on board");
-		return -1;
-	}
 
 	rgb_t curCol;
 	memset(&curCol, 0, sizeof(curCol));
@@ -84,6 +155,40 @@ int main(int argc, char** argv)
 
 		printf("New request to %s %s\n", client.method, client.path);
 
+		if (strcmp(client.path, "/light/temperature"))
+		{
+			if (strcasecmp(client.method, "GET") == 0)
+			{
+				http_req_not_implemented(&client);
+				http_req_close(&client);
+				continue;
+			}
+			else if (strcasecmp(client.method, "PUT") == 0 || strcasecmp(client.method, "POST") == 0)
+			{
+				if (client.content_length >= 3 || client.query != NULL)
+				{
+					char* data = client.content;
+					if (client.content_length < 3)
+						data = client.query;
+
+					unsigned int temperature = atoi(data);
+					temperature2rgb(temperature, &curCol);
+
+					printf("New color: %iK => [ %i, %i, %i ]\n", temperature, curCol.r, curCol.g, curCol.b);
+					board_write_rgb(&board, &curCol);
+				}
+			}
+			else if (strcasecmp(client.method, "DELETE") == 0)
+			{
+				memset(&curCol, 0, sizeof(curCol));
+				board_write_rgb(&board, &curCol);
+			}
+
+			char buf[128];
+			http_req_ok(&client, "application/json");
+			sprintf(buf, "{\"r\":%i,\"g\":%i,\"b\":%i}\n", curCol.r, curCol.g, curCol.b);
+			http_req_send(&client, buf);
+		}
 		if (strcmp(client.path, "/light/rgb") == 0)
 		{
 			if (strcasecmp(client.method, "GET") == 0)
@@ -101,7 +206,7 @@ int main(int argc, char** argv)
 						len = strlen(data);
 					}
 
-					int i;
+					size_t i;
 					for (i = 0; i < len; ++i)
 						if (data[i] == '&' || data[i] == '=')
 							data[i] = 0;
@@ -159,7 +264,7 @@ int main(int argc, char** argv)
 						len = strlen(data);
 					}
 
-					int i;
+					size_t i;
 					for (i = 0; i < len; ++i)
 						if (data[i] == '&' || data[i] == '=')
 							data[i] = 0;
