@@ -1,4 +1,7 @@
 CFLAGS ?= -Wall -Wextra
+ifdef RPI_GPIO
+CFLAGS := $(CFLAGS) -DRPI_GPIO=$(RPI_GPIO)
+endif
 
 .PHONY: all
 all: light
