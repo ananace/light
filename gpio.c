@@ -16,7 +16,8 @@
 
 #define GPIO_BASE (BCM2708_PERI_BASE + 0x200000)
 
-volatile unsigned *g_gpio = NULL;
+void* g_map = NULL;
+volatile unsigned int* g_gpio = NULL;
 
 #define INP_GPIO(g) *(g_gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
 #define OUT_GPIO(g) *(g_gpio+((g)/10)) |=  (1<<(((g)%10)*3))
@@ -24,41 +25,42 @@ volatile unsigned *g_gpio = NULL;
 #define GPIO_SET *(g_gpio+7)
 #define GPIO_CLR *(g_gpio+10)
 
+#define BLOCK_SIZE (4*1024)
 int _gpio_init()
 {
-#define PAGE_SIZE (4*1024)
-#define BLOCK_SIZE (4*1024)
 	int mem_fd;
-	void *gpio_map;
-
 	if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
 		fprintf(stderr, "gpio init, can't open /dev/mem \n");
 		return -1;
 	}
 
-	/* mmap GPIO */
-	gpio_map = mmap(
-		NULL,
-		BLOCK_SIZE,
-		PROT_READ|PROT_WRITE,
-		MAP_SHARED,
-		mem_fd,
-		GPIO_BASE
-	);
+	g_map = mmap(NULL, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, mem_fd, GPIO_BASE);
 
 	close(mem_fd);
 
-	if (gpio_map == MAP_FAILED) {
-		fprintf(stderr, "gpio init, mmap error %ld\n", (long)gpio_map);
+	if (g_map == MAP_FAILED) {
+		fprintf(stderr, "gpio init, mmap error %ld\n", (long)g_map);
 		return -1;
 	}
 
-	g_gpio = (volatile unsigned *)gpio_map;
+	g_gpio = (volatile unsigned *)g_map;
 
 	return 0;
-#undef BLOCK_SIZE
-#undef PAGE_SIZE
 }
+
+int _gpio_cleanup()
+{
+	if (g_map == NULL)
+		return 0;
+
+	munmap(g_map, BLOCK_SIZE);
+
+	g_map = NULL;
+	g_gpio = NULL;
+
+	return 0;
+}
+#undef BLOCK_SIZE
 
 int gpio_export(int pin)
 {
@@ -77,6 +79,8 @@ int gpio_unexport(int pin)
 	(void)pin;
 	if (g_gpio == NULL)
 		return -1;
+
+	_gpio_cleanup();
 
 	return 0;
 }
