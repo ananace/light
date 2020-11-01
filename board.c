@@ -12,6 +12,9 @@
 #define SPIBPW   8
 #define SPIDELAY 0
 
+#define PIN_CLOCK 0
+#define PIN_DATA 1
+
 int board_init_spi(board_t* board, uint8_t channel, uint32_t speed)
 {
 	if (board->type != board_type_invalid)
@@ -48,14 +51,11 @@ int board_init_p9813(board_t* board, uint8_t clock_pin, uint8_t data_pin, uint8_
 		return -2;
 
 	board->type = board_type_p9813;
-	// To support checking for init success
-	board->p9813.clock_pin = 255;
-	board->p9813.data_pin = 255;
 
-	if (gpio_export(clock_pin) < 0) return -1;
-	if (gpio_direction(clock_pin, GPIO_OUT) < 0) return -1;
-	if (gpio_export(data_pin) < 0) return -1;
-	if (gpio_direction(data_pin, GPIO_OUT) < 0) return -1;
+	printf("Attaching clock pin to GPIO pin %d\n", clock_pin);
+	if (gpio_export(PIN_CLOCK, clock_pin, GPIO_OUT) < 0) return -1;
+	printf("Attaching data pin to GPIO pin %d\n", data_pin);
+	if (gpio_export(PIN_DATA, data_pin, GPIO_OUT) < 0) return -1;
 
 	board->p9813.clock_pin = clock_pin;
 	board->p9813.data_pin = data_pin;
@@ -75,8 +75,8 @@ int board_cleanup(board_t* board)
 {
 	if (board->type == board_type_p9813)
 	{
-		if (board->p9813.clock_pin != 255) gpio_unexport(board->p9813.clock_pin);
-		if (board->p9813.data_pin != 255) gpio_unexport(board->p9813.data_pin);
+		gpio_unexport(PIN_CLOCK);
+		gpio_unexport(PIN_DATA);
 	}
 
 	if (board->type == board_type_dummy)
@@ -133,8 +133,8 @@ int board_write_u32(const board_t* board, uint32_t data)
 		val = (data & 0x80000000) != 0 ? GPIO_HIGH : GPIO_LOW;
 		data <<= 1;
 
-		gpio_write(board->p9813.data_pin, val);
-		gpio_pulse(board->p9813.clock_pin);
+		gpio_write(PIN_DATA, val);
+		gpio_pulse(PIN_CLOCK);
 	}
 	return 0;
 }

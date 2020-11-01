@@ -1,203 +1,141 @@
 #include "gpio.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
-#if defined(RPI_GPIO)
-#include <sys/mman.h>
-#if RPI_GPIO >= 4
-#define BCM2708_PERI_BASE 0xFE000000
-#elif RPI_GPIO >= 2
-#define BCM2708_PERI_BASE 0x3F000000
-#else
-#define BCM2708_PERI_BASE 0x20000000
-#endif
+#include <linux/gpio.h>
+#include <sys/ioctl.h>
 
-#define GPIO_BASE (BCM2708_PERI_BASE + 0x200000)
+int g_gpio_fd = -1;
+int g_gpio_pin_fds[GPIO_PINS];
 
-void* g_map = NULL;
-volatile unsigned int* g_gpio = NULL;
-
-#define INP_GPIO(g) *(g_gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
-#define OUT_GPIO(g) *(g_gpio+((g)/10)) |=  (1<<(((g)%10)*3))
-
-#define GPIO_SET *(g_gpio+7)
-#define GPIO_CLR *(g_gpio+10)
-
-#define BLOCK_SIZE (4*1024)
-int _gpio_init()
+int gpio_init(uint8_t dev)
 {
-	int mem_fd;
-	if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
-		fprintf(stderr, "gpio init, can't open /dev/mem \n");
-		return -1;
-	}
-
-	g_map = mmap(NULL, BLOCK_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, mem_fd, GPIO_BASE);
-
-	close(mem_fd);
-
-	if (g_map == MAP_FAILED) {
-		fprintf(stderr, "gpio init, mmap error %ld\n", (long)g_map);
-		return -1;
-	}
-
-	g_gpio = (volatile unsigned *)g_map;
-
-	return 0;
-}
-
-int _gpio_cleanup()
-{
-	if (g_map == NULL)
+	if (g_gpio_fd >= 0)
 		return 0;
 
-	munmap(g_map, BLOCK_SIZE);
+	memset(g_gpio_pin_fds, -1, sizeof(g_gpio_pin_fds));
 
-	g_map = NULL;
-	g_gpio = NULL;
+	char chrdev_name[20];
+	// TODO: Does this need to be configurable?
+	snprintf(chrdev_name, 20, "/dev/gpiochip%i", dev);
+	int fd = open(chrdev_name, 0);
+	if (fd == -1) {
+		int ret = -errno;
+		fprintf(stderr, "Failed to open %s: %s (%d)\n", chrdev_name, strerror(-ret), ret);
 
-	return 0;
-}
-#undef BLOCK_SIZE
+		return ret;
+	}
 
-int gpio_export(int pin)
-{
-	(void)pin;
-	if (g_gpio == NULL)
+	g_gpio_fd = fd;
+
+	struct gpiochip_info info;
+	int ret = ioctl(fd, GPIO_GET_CHIPINFO_IOCTL, &info);
+	if (ret < 0)
 	{
-		int r = _gpio_init();
-		if (r < 0)
-			return r;
+		ret = -errno;
+		fprintf(stderr, "Failed to read GPIO chip info: %s (%d)\n", strerror(-ret), ret);
+		return ret;
+	}
+
+	printf("Attached to GPIO device /dev/%s (%s) with %d lines\n", info.name, info.label, info.lines);
+
+	return 0;
+}
+
+int gpio_uninit()
+{
+	if (g_gpio_fd < 0)
+		return 0;
+
+	for (size_t i = 0; i < 32; ++i)
+		if (g_gpio_pin_fds[i] >= 0)
+			gpio_unexport(i);
+
+	if (close(g_gpio_fd) < 0)
+	{
+		int ret = -errno;
+		fprintf(stderr, "Failed to close GPIO device: %s (%d)\n", strerror(-ret), ret);
+
+		return ret;
+	}
+
+	g_gpio_fd = -1;
+
+	return 0;
+}
+
+int gpio_export(uint8_t id, int pin, int dir)
+{
+	if (g_gpio_fd < 0)
+		return -1;
+
+	struct gpiohandle_request req;
+	req.lineoffsets[0] = pin;
+	req.flags = (dir == GPIO_IN ? GPIOHANDLE_REQUEST_INPUT : GPIOHANDLE_REQUEST_OUTPUT);
+	req.lines = 1;
+	snprintf(req.consumer_label, 32, "lightmeister_gpio%d", id);
+
+	int ret = ioctl(g_gpio_fd, GPIO_GET_LINEHANDLE_IOCTL, &req);
+	if (ret < 0)
+	{
+		ret = -errno;
+		fprintf(stderr, "Failed to export GPIO pin id %d as %d (%s): %s (%d)\n", id, pin, (dir == GPIO_OUT ? "OUT" : "IN"), strerror(-ret), ret);
+		return ret;
+	}
+
+	g_gpio_pin_fds[id] = req.fd;
+
+	return 0;
+}
+
+int gpio_unexport(uint8_t id)
+{
+	if (id > GPIO_PINS)
+		return -2;
+
+	if (g_gpio_pin_fds[id] <= 0)
+		return 0;
+
+	if (close(g_gpio_pin_fds[id]) < 0)
+	{
+		int ret = -errno;
+		fprintf(stderr, "Failed to close GPIO pin id %d: %s (%d)\n", id, strerror(-ret), ret);
+		return ret;
+	}
+
+	g_gpio_pin_fds[id] = -1;
+
+	return 0;
+}
+
+int gpio_write(uint8_t id, int value)
+{
+	if (g_gpio_fd < 0)
+		return -1;
+
+	struct gpiohandle_data data;
+	data.values[0] = value;
+
+	int ret = ioctl(g_gpio_pin_fds[id], GPIOHANDLE_SET_LINE_VALUES_IOCTL, &data);
+	if (ret < 0)
+	{
+		ret = -errno;
+		fprintf(stderr, "Failed to write GPIO value %d to pin id %d: %s (%d)\n", value, id, strerror(-ret), ret);
+		return ret;
 	}
 
 	return 0;
 }
-int gpio_unexport(int pin)
+
+int gpio_pulse(uint8_t id)
 {
-	(void)pin;
-	if (g_gpio == NULL)
-		return -1;
-
-	_gpio_cleanup();
-
-	return 0;
-}
-
-int gpio_direction(int pin, int dir)
-{
-	if (g_gpio == NULL)
-		return -1;
-
-	INP_GPIO(pin);
-	if (dir == GPIO_OUT)
-		OUT_GPIO(pin);
-
-	return 0;
-}
-int gpio_write(int pin, int value)
-{
-	if (g_gpio == NULL)
-		return -1;
-
-	if (value == GPIO_HIGH)
-		GPIO_SET = 1 << pin;
-	else
-		GPIO_CLR = 1 << pin;
-
-	return 0;
-}
-#else
-// sysctl implementation
-int gpio_export(int pin)
-{
-#define BUFFER_MAX 3
-	char buffer[BUFFER_MAX];
-	size_t bytes_written;
-	int fd;
-
-	fd = open("/sys/class/gpio/export", O_WRONLY);
-	if (fd < 0) {
-		fprintf(stderr, "Failed to open gpio export for writing!\n");
-		return -1;
-	}
-
-	bytes_written = snprintf(buffer, BUFFER_MAX, "%d", pin);
-	write(fd, buffer, bytes_written);
-	close(fd);
-	return 0;
-}
-int gpio_unexport(int pin)
-{
-	char buffer[BUFFER_MAX];
-	size_t bytes_written;
-	int fd;
-
-	fd = open("/sys/class/gpio/unexport", O_WRONLY);
-	if (fd < 0) {
-		fprintf(stderr, "Failed to open gpio unexport for writing!\n");
-		return -1;
-	}
-
-	bytes_written = snprintf(buffer, BUFFER_MAX, "%d", pin);
-	write(fd, buffer, bytes_written);
-	close(fd);
-	return 0;
-}
-int gpio_direction(int pin, int dir)
-{
-	static const char s_directions_str[]  = "in\0out";
-
-#define DIRECTION_MAX 35
-	char path[DIRECTION_MAX];
-	int fd;
-
-	snprintf(path, DIRECTION_MAX, "/sys/class/gpio/gpio%d/direction", pin);
-	fd = open(path, O_WRONLY);
-	if (fd < 0) {
-		fprintf(stderr, "Failed to open gpio pin direction for writing!\n");
-		return -1;
-	}
-
-	if (write(fd, &s_directions_str[dir == GPIO_IN ? 0 : 3], dir == GPIO_IN ? 2 : 3) <= 0) {
-		fprintf(stderr, "Failed to set gpio pin direction!\n");
-		return -1;
-	}
-
-	close(fd);
-	return 0;
-}
-int gpio_write(int pin, int value)
-{
-#define VALUE_MAX 30
-	static const char s_values_str[] = "01";
-
-	char path[VALUE_MAX];
-	int fd;
-
-	snprintf(path, VALUE_MAX, "/sys/class/gpio/gpio%d/value", pin);
-	fd = open(path, O_WRONLY);
-	if (fd < 0) {
-		fprintf(stderr, "Failed to open gpio pin value for writing!\n");
-		return -1;
-	}
-
-	if (write(fd, &s_values_str[value == GPIO_LOW ? GPIO_LOW : GPIO_HIGH], 1) <= 0) {
-		fprintf(stderr, "Failed to write gpio pin value!\n");
-		return -1;
-	}
-
-	close(fd);
-	return 0;
-}
-#endif
-
-int gpio_pulse(int pin)
-{
-	gpio_write(pin, GPIO_LOW);
+	gpio_write(id, GPIO_LOW);
 	usleep(GPIO_DELAY_MICROSEC);
-	gpio_write(pin, GPIO_HIGH);
+	gpio_write(id, GPIO_HIGH);
 	usleep(GPIO_DELAY_MICROSEC);
 
 	return 0;

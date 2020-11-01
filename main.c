@@ -1,11 +1,13 @@
-#include "http.h"
 #include "board.h"
+#include "gpio.h"
+#include "http.h"
 
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+uint8_t mode = 255;
 int running;
 http_t server;
 board_t board;
@@ -17,6 +19,9 @@ void sigint(int sig)
 	running = 0;
 	http_close(&server);
 	board_cleanup(&board);
+
+	if (mode == 1)
+		gpio_uninit();
 }
 
 int main(int argc, char** argv)
@@ -33,16 +38,15 @@ int main(int argc, char** argv)
 			struct {
 				uint8_t cpin,
 					dpin,
-					len;
+					len,
+					dev;
 			} p9813;
 		};
 	} args;
-	memset(&args, 0, sizeof(args));
+	memset(&args, -1, sizeof(args));
 
 	if (argc < 1)
 		return -1;
-
-	uint8_t mode = 255;
 
 	int i;
 	for (i = 1; i < argc; ++i)
@@ -63,6 +67,8 @@ int main(int argc, char** argv)
 		else if (strcmp(argv[i], "-i") == 0 || strcmp(argv[i], "--id") == 0)
 			args.spi.id = atoi(argv[++i]);
 
+		else if (strcmp(argv[i], "--gpiochip") == 0)
+			args.p9813.dev = atoi(argv[++i]);
 		else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--clock") == 0)
 			args.p9813.cpin = atoi(argv[++i]);
 		else if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--data") == 0)
@@ -70,12 +76,12 @@ int main(int argc, char** argv)
 		else if (strcmp(argv[i], "-n") == 0 || strcmp(argv[i], "--count") == 0)
 			args.p9813.len = atoi(argv[++i]);
 	}
-	if (args.port == 0) args.port = 4567;
+	if (args.port == UINT16_MAX) args.port = 4567;
 
 	if (mode == 0)
 	{
-		if (args.spi.speed == 0) args.spi.speed = 100000;
-		if (args.spi.id == 0) args.spi.id = 0x90;
+		if (args.spi.speed == UINT32_MAX) args.spi.speed = 100000;
+		if (args.spi.id == UINT8_MAX) args.spi.id = 0x90;
 
 		if (board_init_spi(&board, 0, args.spi.speed) < 0)
 		{
@@ -94,7 +100,13 @@ int main(int argc, char** argv)
 	}
 	else if (mode == 1)
 	{
-		if (args.p9813.len == 0) args.p9813.len = 1;
+		if (args.p9813.dev == UINT8_MAX) args.p9813.dev = 0;
+		if (gpio_init(args.p9813.dev) < 0)
+			return -1;
+
+		if (args.p9813.cpin == UINT8_MAX) args.p9813.cpin = 0;
+		if (args.p9813.dpin == UINT8_MAX) args.p9813.dpin = 1;
+		if (args.p9813.len == UINT8_MAX) args.p9813.len = 1;
 
 		if (board_init_p9813(&board, args.p9813.cpin, args.p9813.dpin, args.p9813.len))
 		{
@@ -102,7 +114,7 @@ int main(int argc, char** argv)
 			return -1;
 		}
 
-		printf("LED board chain of %i connected on pins %i/%i\n", args.p9813.len, args.p9813.cpin, args.p9813.dpin);
+		printf("LED board chain of %i P9813 IC(s) connected on pins clock: %i, data: %i\n", args.p9813.len, args.p9813.cpin, args.p9813.dpin);
 	}
 	else if (mode == 2)
 	{
@@ -121,6 +133,7 @@ int main(int argc, char** argv)
 		       "  -h --hz HZ      Change the communication hertz (default 100 000)\n"
 		       "  -i --id ID      Change the board ID (default 0x90)\n\n"
 		       "P9813 args:\n"
+		       "  --gpiochip DEV  The dev number for /dev/gpiochip* to use (default 0)\n"
 		       "  -c --clock PIN  The pin ID to use for the clock signal\n"
 		       "  -d --data PIN   The pin ID to use for the data signal\n"
 		       "  -n --count NUM  The number of controllers that are chained\n",
