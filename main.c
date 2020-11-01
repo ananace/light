@@ -201,7 +201,6 @@ int main(int argc, char** argv)
 							value = atof(&(data[i]));
 					}
 
-					unsigned int temperature = atoi(data);
 					temperature2rgb(temperature, &curCol);
 					if (value != 1.f)
 					{
