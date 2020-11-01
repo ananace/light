@@ -174,14 +174,48 @@ int main(int argc, char** argv)
 			{
 				if (client.content_length >= 3 || client.query != NULL)
 				{
+					size_t len = client.content_length;
 					char* data = client.content;
 					if (client.content_length < 3)
+					{
 						data = client.query;
+						len = strlen(data);
+					}
+
+					size_t i;
+					for (i = 0; i < len; ++i)
+						if (data[i] == '&' || data[i] == '=')
+							data[i] = 0;
+
+					int temperature;
+					float value = 1.f;
+
+					for (i = 0; i < len;)
+					{
+						char* cur = &(data[i]);
+
+						i += strlen(cur) + 1;
+						if (strcasecmp(cur, "k") == 0 || strcasecmp(cur, "temp") == 0 || strcasecmp(cur, "temperature") == 0)
+							temperature = atoi(&(data[i]));
+						else if (strcasecmp(cur, "v") == 0 || strcasecmp(cur, "value") == 0)
+							value = atof(&(data[i]));
+					}
 
 					unsigned int temperature = atoi(data);
 					temperature2rgb(temperature, &curCol);
+					if (value != 1.f)
+					{
+						if (value < 0)
+							value = 0;
+						else if (value > 1)
+							value = 1;
 
-					printf("New color: %iK => [ %i, %i, %i ]\n", temperature, curCol.r, curCol.g, curCol.b);
+						curCol.r *= value;
+						curCol.g *= value;
+						curCol.b *= value;
+					}
+
+					printf("New color: %iK @%i%% => [ %i, %i, %i ]\n", temperature, (int)(value * 100), curCol.r, curCol.g, curCol.b);
 					board_write_rgb(&board, &curCol);
 				}
 			}
