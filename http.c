@@ -149,8 +149,9 @@ int parse_request(int fd, http_req_t* req)
 	char buf[1024];
 	char method[255];
 	char url[255];
+	char content_type[255];
 	char* query = NULL;
-	size_t i = 0, j = 0;
+	size_t i = 0, j = 0, content_length = 0, len = 0;
 
 	int chars = get_line(fd, buf, sizeof(buf));
 
@@ -178,23 +179,24 @@ int parse_request(int fd, http_req_t* req)
 	else
 		query = NULL;
 
-	req->method = malloc(strlen(method) + 1);
-	strncpy(req->method, method, 255);
-	req->path = malloc(strlen(url) + 1);
-	strncpy(req->path, url, 255);
+	len = strlen(method) + 1;
+	req->method = malloc(len);
+	strncpy(req->method, method, len);
+
+	len = strlen(url) + 1;
+	req->path = malloc(len);
+	strncpy(req->path, url, len);
 
 	if (query != NULL)
 	{
-		req->query = malloc(strlen(query) + 1);
-		strncpy(req->query, query, 255);
+		len = strlen(query) + 1;
+		req->query = malloc(len);
+		strncpy(req->query, query, len);
 	}
 	else
 		req->query = NULL;
 
-	char content_type[255];
 	memset(content_type, 0, 255);
-	size_t content_length = 0;
-
 	do
 	{
 		chars = get_line(fd, buf, sizeof(buf));
