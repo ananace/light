@@ -20,7 +20,6 @@ volatile unsigned *g_gpio = NULL;
 
 #define INP_GPIO(g) *(g_gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
 #define OUT_GPIO(g) *(g_gpio+((g)/10)) |=  (1<<(((g)%10)*3))
-#define SET_GPIO_ALT(g,a) *(g_gpio+(((g)/10))) |= (((a)<=3?(a)+4:(a)==4?3:2)<<(((g)%10)*3))
 
 #define GPIO_SET *(g_gpio+7)
 #define GPIO_CLR *(g_gpio+10)
