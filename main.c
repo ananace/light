@@ -79,7 +79,7 @@ int main(int argc, char** argv)
 
 		if (board_init_spi(&board, 0, args.spi.speed) < 0)
 		{
-			puts("Failed to connect to light board, check SPI bus?");
+			fprintf(stderr, "Failed to connect to light board, check SPI bus?\n");
 			return -1;
 		}
 		board.spi.id = args.spi.id;
@@ -88,7 +88,7 @@ int main(int argc, char** argv)
 
 		if (board_set_pwm(&board) < 0)
 		{
-			puts("Failed to set PWM on board");
+			fprintf(stderr, "Failed to set PWM on board\n");
 			return -1;
 		}
 	}
@@ -98,7 +98,7 @@ int main(int argc, char** argv)
 
 		if (board_init_p9813(&board, args.p9813.cpin, args.p9813.dpin, args.p9813.len))
 		{
-			puts("Failed to connect to light board, check pins?");
+			fprintf(stderr, "Failed to connect to light board, check output for more info\n");
 			return -1;
 		}
 
@@ -131,7 +131,7 @@ int main(int argc, char** argv)
 	memset(&server, 0, sizeof(server));
 	if (http_init(&server, args.port) < 0)
 	{
-		puts("Failed to open socket, port in use?");
+		fprintf(stderr, "Failed to open socket, port in use?\n");
 		return -1;
 	}
 
@@ -144,7 +144,7 @@ int main(int argc, char** argv)
 
 	if (board_write_rgb(&board, &curCol) < 0)
 	{
-		puts("Failed to write RGB data to board");
+		fprintf(stderr, "Failed to write initial RGB data to board\n");
 		return -1;
 	}
 

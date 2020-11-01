@@ -33,7 +33,7 @@ int _gpio_init()
 	void *gpio_map;
 
 	if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
-		printf("gpio init, can't open /dev/mem \n");
+		fprintf(stderr, "gpio init, can't open /dev/mem \n");
 		return -1;
 	}
 
@@ -50,7 +50,7 @@ int _gpio_init()
 	close(mem_fd);
 
 	if (gpio_map == MAP_FAILED) {
-		printf("gpio init, mmap error %ld\n", (long)gpio_map);
+		fprintf(stderr, "gpio init, mmap error %ld\n", (long)gpio_map);
 		return -1;
 	}
 
