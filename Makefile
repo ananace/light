@@ -1,6 +1,9 @@
-CFLAGS ?= -Wall -Wextra
+CFLAGS = -Wall -Wextra
 ifdef RPI_GPIO
 CFLAGS := $(CFLAGS) -DRPI_GPIO=$(RPI_GPIO)
+endif
+ifdef DEBUG
+CFLAGS := $(CFLAGS) -ggdb
 endif
 
 .PHONY: all
