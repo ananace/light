@@ -51,6 +51,8 @@ int main(int argc, char** argv)
 			mode = 0;
 		else if (strcmp(argv[i], "-P") == 0 || strcmp(argv[i], "--p9813") == 0)
 			mode = 1;
+		else if (strcmp(argv[i], "-D") == 0 || strcmp(argv[i], "--dummy") == 0)
+			mode = 2;
 		else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--port") == 0)
 			args.port = atoi(argv[++i]);
 		else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
@@ -102,12 +104,17 @@ int main(int argc, char** argv)
 
 		printf("LED board chain of %i connected on pins %i/%i\n", args.p9813.len, args.p9813.cpin, args.p9813.dpin);
 	}
+	else if (mode == 2)
+	{
+		board_init_dummy(&board);
+	}
 	else
 	{
 		printf("Usage: %s [OPTIONS...]\n\n"
 		       "Args:\n"
 		       "  -S --spi        Use SPI connected BitWizard board\n"
 		       "  -P --p9813      Use P9813 board\n"
+		       "  -D --dummy      Use dummy board for testing\n"
 		       "  -p --port PORT  Specify the HTTP server port to use\n"
 		       "  -h --help       Display this text\n\n"
 		       "SPI args:\n"

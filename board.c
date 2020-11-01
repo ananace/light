@@ -63,6 +63,14 @@ int board_init_p9813(board_t* board, uint8_t clock_pin, uint8_t data_pin, uint8_
 
 	return 0;
 }
+int board_init_dummy(board_t* board)
+{
+	if (board->type != board_type_invalid)
+		return -2;
+
+	board->type = board_type_dummy;
+	return 0;
+}
 int board_cleanup(board_t* board)
 {
 	if (board->type == board_type_p9813)
@@ -71,12 +79,18 @@ int board_cleanup(board_t* board)
 		if (board->p9813.data_pin != 255) gpio_unexport(board->p9813.data_pin);
 	}
 
+	if (board->type == board_type_dummy)
+		fprintf(stderr, "board_cleanup()\n");
+
 	memset(board, 0, sizeof(board_t));
 	return 0;
 }
 
 int board_set_pwm(const board_t* board)
 {
+	if (board->type == board_type_dummy)
+		fprintf(stderr, "board_set_pwm()\n");
+
 	if (board->type != board_type_spi)
 		return -1;
 
@@ -90,6 +104,9 @@ int board_set_pwm(const board_t* board)
 
 int board_write_data(const board_t* board, char* data, uint32_t len)
 {
+	if (board->type == board_type_dummy)
+		fprintf(stderr, "board_write_data(%p, %u)\n", (void*)data, len);
+
 	if (board->type != board_type_spi)
 		return -1;
 
@@ -107,6 +124,9 @@ int board_write_data(const board_t* board, char* data, uint32_t len)
 }
 int board_write_u32(const board_t* board, uint32_t data)
 {
+	if (board->type == board_type_dummy)
+		fprintf(stderr, "board_write_u32(%u)\n", data);
+
 	int val;
 	for (uint8_t bit = 0; bit < 32; ++bit)
 	{
@@ -121,6 +141,7 @@ int board_write_u32(const board_t* board, uint32_t data)
 
 int board_write_rgb(const board_t* board, const rgb_t* rgb)
 {
+
 	if (board->type == board_type_spi)
 	{
 		char data[6];
@@ -155,6 +176,12 @@ int board_write_rgb(const board_t* board, const rgb_t* rgb)
 			board_write_u32(board, data);
 
 		board_write_u32(board, 0);
+		return 0;
+	}
+	else if (board->type == board_type_dummy)
+	{
+		fprintf(stderr, "board_write_rgb([%u, %u, %u])\n", rgb->r, rgb->g, rgb->b);
+		return 0;
 	}
 
 	return -1;

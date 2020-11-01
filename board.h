@@ -8,7 +8,8 @@ enum board_type_t
 {
 	board_type_invalid = 0,
 	board_type_spi,
-	board_type_p9813
+	board_type_p9813,
+	board_type_dummy
 };
 
 struct _board_t
@@ -37,6 +38,7 @@ typedef struct _board_t board_t;
 
 int board_init_spi(board_t*, uint8_t channel, uint32_t speed);
 int board_init_p9813(board_t*, uint8_t clock_pin, uint8_t data_pin, uint8_t chain_len);
+int board_init_dummy(board_t*);
 int board_cleanup(board_t*);
 
 int board_set_pwm(const board_t*);
