@@ -230,7 +230,7 @@ int main(int argc, char** argv)
 			sprintf(buf, "{\"r\":%i,\"g\":%i,\"b\":%i}\n", curCol.r, curCol.g, curCol.b);
 			http_req_send(&client, buf);
 		}
-		if (strcmp(client.path, "/light/rgb") == 0)
+		else if (strcmp(client.path, "/light/rgb") == 0)
 		{
 			if (strcasecmp(client.method, "GET") == 0)
 			{
