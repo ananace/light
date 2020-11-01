@@ -162,7 +162,7 @@ int main(int argc, char** argv)
 
 		printf("New request to %s %s\n", client.method, client.path);
 
-		if (strcmp(client.path, "/light/temperature"))
+		if (strcmp(client.path, "/light/temperature") == 0)
 		{
 			if (strcasecmp(client.method, "GET") == 0)
 			{
