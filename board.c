@@ -168,7 +168,7 @@ int board_write_rgb(const board_t* board, const rgb_t* rgb)
 		data |= header << 24;
 		data |= rgb->b << 16;
 		data |= rgb->g << 8;
-		data |= rgb->r;
+		data |= rgb->r << 0;
 
 		board_write_u32(board, 0);
 
