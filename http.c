@@ -98,7 +98,7 @@ void http_req_ok(const http_req_t* req, const char* type)
 
 	strcpy(buf, "HTTP/1.0 200 OK\r\n");
 	http_req_send(req, buf);
-	sprintf(buf, "%s\r\n", req->source->name);
+	sprintf(buf, "Server: %s\r\n", req->source->name);
 	http_req_send(req, buf);
 	sprintf(buf, "Content-Type: %s\r\n", type);
 	http_req_send(req, buf);
@@ -111,7 +111,7 @@ void http_req_not_found(const http_req_t* req)
 
 	strcpy(buf, "HTTP/1.0 404 NOT FOUND\r\n");
 	http_req_send(req, buf);
-	sprintf(buf, "%s\r\n", req->source->name);
+	sprintf(buf, "Server: %s\r\n", req->source->name);
 	http_req_send(req, buf);
 	strcpy(buf, "Content-Type: text/html\r\n");
 	http_req_send(req, buf);
@@ -132,7 +132,7 @@ void http_req_not_implemented(const http_req_t* req)
 
 	strcpy(buf, "HTTP/1.0 501 METHOD NOT IMPLEMENTED\r\n");
 	http_req_send(req, buf);
-	sprintf(buf, "%s\r\n", req->source->name);
+	sprintf(buf, "Server: %s\r\n", req->source->name);
 	http_req_send(req, buf);
 	strcpy(buf, "Content-Type: text/html\r\n");
 	http_req_send(req, buf);
