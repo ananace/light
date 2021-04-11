@@ -52,7 +52,7 @@ int temperature2rgb(const temp_t *temp, rgb_t* rgb)
 
 int hsv2rgb(const hsv_t* hsv, rgb_t* rgb)
 {
-	unsigned char region, remainder, p, q, t;
+	unsigned short region, remainder, p, q, t;
 
 	if (hsv->s == 0)
 	{
@@ -62,8 +62,8 @@ int hsv2rgb(const hsv_t* hsv, rgb_t* rgb)
 		return 0;
 	}
 
-	region = hsv->h / 43;
-	remainder = (hsv->h - (region * 43)) * 6;
+	region = hsv->h / 60;
+	remainder = (hsv->h - (region * 60)) * 6;
 
 	p = (hsv->v * (255 - hsv->s)) >> 8;
 	q = (hsv->v * (255 - ((hsv->s * remainder) >> 8))) >> 8;

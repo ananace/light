@@ -25,18 +25,21 @@ rgb_t curCol;
 hsv_t curHSV;
 temp_t curTemp;
 
+uint8_t curBright;
+
 rgb_t offCol;
 int lightState = LIGHTSTATE_OFF;
 
 uint8_t *mqtt_sendbuf = NULL,
 	*mqtt_recvbuf = NULL;
 
-#define MQTT_QUEUELEN 4
+#define MQTT_QUEUELEN 8
 struct mqtt_tosend
 {
 	char* topic;
 	char* message;
-	int flags;
+	uint8_t flags;
+	uint8_t ready;
 };
 struct mqtt_tosend mqtt_messages[MQTT_QUEUELEN];
 int mqtt_message_counter = 0;
@@ -54,21 +57,16 @@ void sigint(int sig)
 	(void)sig;
 
 	running = 0;
-	if (http_enabled == 1)
-		pthread_cancel(http_thread);
-	if (mqtt_enabled == 1)
-		pthread_cancel(mqtt_thread);
+        if (http_enabled == 1)
+                pthread_cancel(http_thread);
+        if (mqtt_enabled == 1)
+                pthread_cancel(mqtt_thread);
 
-	if (server.socket != 0)
-		http_close(&server);
+        if (server.socket != 0)
+                http_close(&server);
 	if (mqtt.socketfd != 0)
 		mqtt_disconnect(&mqtt);
 	board_cleanup(&board);
-
-	if (mqtt_sendbuf != NULL)
-		free(mqtt_sendbuf);
-	if (mqtt_recvbuf != NULL)
-		free(mqtt_recvbuf);
 
 	if (mode == 1)
 		gpio_uninit();
@@ -216,6 +214,18 @@ int main(int argc, char** argv)
 		return mode == 255 ? -1 : 0;
 	}
 
+	memset(&curCol, 0, sizeof(curCol));
+	memset(&curHSV, 0, sizeof(curHSV));
+	memset(&curTemp, 0, sizeof(curTemp));
+
+	memset(&offCol, 0, sizeof(offCol));
+
+	if (board_write_rgb(&board, &offCol) < 0)
+	{
+		fprintf(stderr, "Failed to write initial RGB data to board\n");
+		return -1;
+	}
+
 	running = 1;
 
 	memset(&server, 0, sizeof(server));
@@ -271,11 +281,9 @@ int main(int argc, char** argv)
 		mqtt_subscribe(&mqtt, topic, 0);
 		sprintf(topic, "%s/temperature/set", args.mqtt.topic);
 		mqtt_subscribe(&mqtt, topic, 0);
-		sprintf(topic, "%s/hs/set", args.mqtt.topic);
+		sprintf(topic, "%s/color/set", args.mqtt.topic);
 		mqtt_subscribe(&mqtt, topic, 0);
-		sprintf(topic, "%s/v/set", args.mqtt.topic);
-		mqtt_subscribe(&mqtt, topic, 0);
-		sprintf(topic, "%s/hsv/set", args.mqtt.topic);
+		sprintf(topic, "%s/brightness/set", args.mqtt.topic);
 		mqtt_subscribe(&mqtt, topic, 0);
 		sprintf(topic, "%s/rgb/set", args.mqtt.topic);
 		mqtt_subscribe(&mqtt, topic, 0);
@@ -289,18 +297,6 @@ int main(int argc, char** argv)
 		printf("MQTT online and handling %s/*.\n", args.mqtt.topic);
 	}
 
-	memset(&curCol, 0, sizeof(curCol));
-	memset(&curHSV, 0, sizeof(curHSV));
-	memset(&curTemp, 0, sizeof(curTemp));
-
-	memset(&offCol, 0, sizeof(offCol));
-
-	if (board_write_rgb(&board, &offCol) < 0)
-	{
-		fprintf(stderr, "Failed to write initial RGB data to board\n");
-		return -1;
-	}
-
 	signal(SIGINT, sigint);
 
 	void* status;
@@ -311,6 +307,105 @@ int main(int argc, char** argv)
 		pthread_join(mqtt_thread, &status);
 
 	sigint(0);
+}
+
+void mqtt_publish_state()
+{
+	if (mqtt_enabled == 0)
+		return;
+
+	struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
+	msg->topic = malloc(128);
+	msg->message = malloc(4);
+	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
+	snprintf(msg->topic, 128, "%s/state", args.mqtt.topic);
+	snprintf(msg->message, 4, "%s", (lightState == LIGHTSTATE_ON) ? "on" : "off");
+	msg->ready = 1;
+}
+void mqtt_publish_temperature(int withBright)
+{
+	if (mqtt_enabled == 0)
+		return;
+
+	struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
+	msg->topic = malloc(128);
+	msg->message = malloc(6);
+	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
+	snprintf(msg->topic, 128, "%s/temperature", args.mqtt.topic);
+	snprintf(msg->message, 6, "%u", curTemp.k);
+	msg->ready = 1;
+
+	if (withBright == 0)
+		return;
+
+	msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
+	msg->topic = malloc(128);
+	msg->message = malloc(4);
+	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
+	snprintf(msg->topic, 128, "%s/brightness", args.mqtt.topic);
+	snprintf(msg->message, 4, "%u", curBright);
+	msg->ready = 1;
+}
+void mqtt_publish_rgb(int withBright)
+{
+	if (mqtt_enabled == 0)
+		return;
+
+	struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
+	msg->topic = malloc(128);
+	msg->message = malloc(12);
+	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
+	snprintf(msg->topic, 128, "%s/rgb", args.mqtt.topic);
+	snprintf(msg->message, 12, "%u,%u,%u", curCol.r, curCol.g, curCol.b);
+	msg->ready = 1;
+
+	if (withBright == 0)
+		return;
+
+	msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
+	msg->topic = malloc(128);
+	msg->message = malloc(4);
+	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
+	snprintf(msg->topic, 128, "%s/brightness", args.mqtt.topic);
+	snprintf(msg->message, 4, "%u", curBright);
+	msg->ready = 1;
+}
+void mqtt_publish_color(int withBright)
+{
+	if (mqtt_enabled == 0)
+		return;
+
+	struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
+	msg->topic = malloc(128);
+	msg->message = malloc(6);
+	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
+	snprintf(msg->topic, 128, "%s/color", args.mqtt.topic);
+	snprintf(msg->message, 6, "%u,%u", curHSV.h, (uint8_t)((curHSV.s / 255.f) * 100));
+	msg->ready = 1;
+
+	if (withBright == 0)
+		return;
+
+	msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
+	msg->topic = malloc(128);
+	msg->message = malloc(4);
+	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
+	snprintf(msg->topic, 128, "%s/brightness", args.mqtt.topic);
+	snprintf(msg->message, 4, "%u", curBright);
+	msg->ready = 1;
+}
+void mqtt_publish_brightness()
+{
+	if (mqtt_enabled == 0)
+		return;
+
+	struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
+	msg->topic = malloc(128);
+	msg->message = malloc(4);
+	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
+	snprintf(msg->topic, 128, "%s/brightness", args.mqtt.topic);
+	snprintf(msg->message, 4, "%u", curBright);
+	msg->ready = 1;
 }
 
 void* http_worker(void* unused)
@@ -374,17 +469,7 @@ void* http_worker(void* unused)
 							board_write_rgb(&board, &curCol);
 						else
 							board_write_rgb(&board, &offCol);
-
-						if (mqtt_enabled != 0)
-						{
-							char topic[128];
-							char message[128];
-							size_t len;
-
-							sprintf(topic, "%s/state", args.mqtt.topic);
-							len = sprintf(message, "{\"state\":%d}", lightState);
-							mqtt_publish(&mqtt, topic, message, len, MQTT_PUBLISH_QOS_0);
-						}
+						mqtt_publish_state();
 					}
 				}
 			}
@@ -392,15 +477,7 @@ void* http_worker(void* unused)
 			{
 				lightState = LIGHTSTATE_OFF;
 				board_write_rgb(&board, &offCol);
-
-				if (mqtt_enabled != 0)
-				{
-					char topic[128];
-					const char *msg = "{\"state\":0}";
-
-					sprintf(topic, "%s/state", args.mqtt.topic);
-					mqtt_publish(&mqtt, topic, msg, strlen(msg), MQTT_PUBLISH_QOS_0);
-				}
+				mqtt_publish_state();
 			}
 
 			char buf[128];
@@ -444,6 +521,7 @@ void* http_worker(void* unused)
 							curTemp.v = atof(&(data[i]));
 					}
 
+					curBright = (uint8_t)(curTemp.v * 255);
 					temperature2rgb(&curTemp, &curCol);
 
 					if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
@@ -454,38 +532,21 @@ void* http_worker(void* unused)
 					printf("New color: %iK @%i%% => [ %i, %i, %i ]\n", curTemp.k, (int)(curTemp.v * 100), curCol.r, curCol.g, curCol.b);
 					board_write_rgb(&board, &curCol);
 
-					if (mqtt_enabled != 0)
-					{
-						char topic[128];
-						char msg[128];
-						size_t len;
-
-						sprintf(topic, "%s/temperature", args.mqtt.topic);
-						len = sprintf(msg, "{\"k\":%d,\"v\":%f}", curTemp.k, curTemp.v);
-						mqtt_publish(&mqtt, topic, msg, len, MQTT_PUBLISH_QOS_0);
-
-						sprintf(topic, "%s/state", args.mqtt.topic);
-						len = sprintf(msg, "{\"state\":%d}", lightState);
-						mqtt_publish(&mqtt, topic, msg, len, MQTT_PUBLISH_QOS_0);
-					}
+					mqtt_publish_temperature(1);
+					mqtt_publish_state();
 				}
 			}
 			else if (strcasecmp(client.method, "DELETE") == 0)
 			{
 				lightState = LIGHTSTATE_OFF;
 
+				curBright = 0;
 				memset(&curTemp, 0, sizeof(curTemp));
 				memset(&curCol, 0, sizeof(curCol));
 				board_write_rgb(&board, &curCol);
 
-				if (mqtt_enabled != 0)
-				{
-					char topic[128];
-					sprintf(topic, "%s/temperature", args.mqtt.topic);
-					mqtt_publish(&mqtt, topic, "{\"k\":0,\"v\":0}", 13, MQTT_PUBLISH_QOS_0);
-					sprintf(topic, "%s/state", args.mqtt.topic);
-					mqtt_publish(&mqtt, topic, "{\"state\":0}", 11, MQTT_PUBLISH_QOS_0);
-				}
+				mqtt_publish_temperature(1);
+				mqtt_publish_state();
 			}
 
 			char buf[128];
@@ -536,40 +597,25 @@ void* http_worker(void* unused)
 					else
 						lightState = LIGHTSTATE_OFF;
 
+					curBright = (uint8_t)((int)(curCol.r + curCol.g + curCol.b) / 3);
+
 					printf("New color: [ %i, %i, %i ]\n", curCol.r, curCol.g, curCol.b);
 					board_write_rgb(&board, &curCol);
 
-					if (mqtt_enabled != 0)
-					{
-						char topic[128];
-						char msg[128];
-						size_t len;
-
-						sprintf(topic, "%s/rgb", args.mqtt.topic);
-						len = sprintf(msg, "{\"r\": %d, \"g\": %d, \"b\": %d}", curCol.r, curCol.g, curCol.b);
-						mqtt_publish(&mqtt, topic, msg, len, MQTT_PUBLISH_QOS_0);
-
-						sprintf(topic, "%s/state", args.mqtt.topic);
-						len = sprintf(msg, "{\"state\":%d}", lightState);
-						mqtt_publish(&mqtt, topic, msg, len, MQTT_PUBLISH_QOS_0);
-					}
+					mqtt_publish_rgb(1);
+					mqtt_publish_state();
 				}
 			}
 			else if (strcasecmp(client.method, "DELETE") == 0)
 			{
 				lightState = LIGHTSTATE_OFF;
+				curBright = 0;
 
 				memset(&curCol, 0, sizeof(curCol));
 				board_write_rgb(&board, &curCol);
 
-				if (mqtt_enabled != 0)
-				{
-					char topic[128];
-					sprintf(topic, "%s/rgb", args.mqtt.topic);
-					mqtt_publish(&mqtt, topic, "{\"r\":0,\"g\":0,\"b\":0}", 19, MQTT_PUBLISH_QOS_0);
-					sprintf(topic, "%s/state", args.mqtt.topic);
-					mqtt_publish(&mqtt, topic, "{\"state\":0}", 11, MQTT_PUBLISH_QOS_0);
-				}
+				mqtt_publish_rgb(1);
+				mqtt_publish_state();
 			}
 			else
 			{
@@ -614,13 +660,17 @@ void* http_worker(void* unused)
 
 						i += strlen(cur) + 1;
 						if (strcasecmp(cur, "h") == 0 || strcasecmp(cur, "hue") == 0)
-							curHSV.h = (uint8_t)((atof(data + i) / 360.f) * 255);
+							curHSV.h = (uint16_t)(atoi(data + i));
 						else if (strcasecmp(cur, "s") == 0 || strcasecmp(cur, "saturation") == 0)
 							curHSV.s = (uint8_t)(atof(data + i) * 255);
 						else if (strcasecmp(cur, "v") == 0 || strcasecmp(cur, "value") == 0)
 							curHSV.v = (uint8_t)(atof(data + i) * 255);
 					}
 
+					if (curHSV.h > 360)
+						curHSV.h = 360;
+
+					curBright = curHSV.v;
 					hsv2rgb(&curHSV, &curCol);
 
 					if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
@@ -631,38 +681,21 @@ void* http_worker(void* unused)
 					printf("New color: [ %.2f, %.2f, %.2f ] => [ %i, %i, %i ]\n", (curHSV.h / 255.f) * 360.f, curHSV.s / 255.f, curHSV.v / 255.f, curCol.r, curCol.g, curCol.b);
 					board_write_rgb(&board, &curCol);
 
-					if (mqtt_enabled != 0)
-					{
-						char topic[128];
-						char msg[128];
-						size_t len;
-
-						sprintf(topic, "%s/hsv", args.mqtt.topic);
-						len = sprintf(msg, "{\"h\":%f,\"s\":%f,\"v\":%f}", (curHSV.h / 255.f) * 360.f, curHSV.s / 255.f, curHSV.v / 255.f);
-						mqtt_publish(&mqtt, topic, msg, len, MQTT_PUBLISH_QOS_0);
-
-						sprintf(topic, "%s/state", args.mqtt.topic);
-						len = sprintf(msg, "{\"state\":%d}", lightState);
-						mqtt_publish(&mqtt, topic, msg, len, MQTT_PUBLISH_QOS_0);
-					}
+					mqtt_publish_color(1);
+					mqtt_publish_state();
 				}
 			}
 			else if (strcasecmp(client.method, "DELETE") == 0)
 			{
 				lightState = LIGHTSTATE_OFF;
+				curBright = 0;
 
 				memset(&curHSV, 0, sizeof(curHSV));
 				memset(&curCol, 0, sizeof(curCol));
 				board_write_rgb(&board, &curCol);
 
-				if (mqtt_enabled != 0)
-				{
-					char topic[128];
-					sprintf(topic, "%s/hsv", args.mqtt.topic);
-					mqtt_publish(&mqtt, topic, "{\"h\":0,\"s\":0,\"v\":0}", 19, MQTT_PUBLISH_QOS_0);
-					sprintf(topic, "%s/state", args.mqtt.topic);
-					mqtt_publish(&mqtt, topic, "{\"state\":0}", 11, MQTT_PUBLISH_QOS_0);
-				}
+				mqtt_publish_color(1);
+				mqtt_publish_state();
 			}
 			else
 			{
@@ -695,7 +728,11 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 	memcpy(topic_name, published->topic_name, published->topic_name_size);
 	topic_name[published->topic_name_size] = '\0';
 
-	printf("Received %luB publish to %s.\n", published->application_message_size, topic_name);
+	char* tmpdata = (char*) malloc(published->application_message_size + 1);
+	memcpy(tmpdata, published->application_message, published->application_message_size);
+	tmpdata[published->application_message_size] = '\0';
+
+	printf("Received %luB publish \"%s\" to %s.\n", published->application_message_size, tmpdata, topic_name);
 
 	if (strncmp(topic_name, args.mqtt.topic, strlen(args.mqtt.topic)) == 0)
 	{
@@ -719,44 +756,20 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 					board_write_rgb(&board, &curCol);
 				else
 					board_write_rgb(&board, &offCol);
-
-				struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-				msg->topic = malloc(128);
-				msg->message = malloc(128);
-				msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
-				sprintf(msg->topic, "%s/state", args.mqtt.topic);
-				sprintf(msg->message, "{\"state\":%d}", lightState);
 			}
+
+			mqtt_publish_state();
 		}
 		else if (strcmp(subtopic_name, "temperature/set") == 0)
 		{
 			memset(&curCol, 0, sizeof(curCol));
 			memset(&curHSV, 0, sizeof(curHSV));
 
-			size_t len = published->application_message_size;
-			char *data = malloc(len + 1);
-			memcpy(data, published->application_message, len);
-
-			size_t i;
-			for (i = 0; i < len; ++i)
-				if (data[i] == '&' || data[i] == '=')
-					data[i] = 0;
-
-			for (i = 0; i < len;)
-			{
-				char* cur = &(data[i]);
-
-				i += strlen(cur) + 1;
-				if (strcasecmp(cur, "k") == 0 || strcasecmp(cur, "temp") == 0 || strcasecmp(cur, "temperature") == 0)
-					curTemp.k = atoi(&(data[i]));
-				else if (strcasecmp(cur, "v") == 0 || strcasecmp(cur, "value") == 0)
-					curTemp.v = atof(&(data[i]));
-			}
-
-			free(data);
-
+			curTemp.k = atoi(tmpdata);
+			curTemp.v = curBright;
 			temperature2rgb(&curTemp, &curCol);
 
+                        int oldstate = lightState;
 			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
 				lightState = LIGHTSTATE_ON;
 			else
@@ -765,28 +778,17 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			printf("New color: %iK @%i%% => [ %i, %i, %i ]\n", curTemp.k, (int)(curTemp.v * 100), curCol.r, curCol.g, curCol.b);
 			board_write_rgb(&board, &curCol);
 
-			struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-			msg->topic = malloc(128);
-			msg->message = malloc(128);
-			msg->flags = MQTT_PUBLISH_QOS_0;
-			sprintf(msg->topic, "%s/temperature", args.mqtt.topic);
-			sprintf(msg->message, "{\"k\":%d,\"v\":%f}", curTemp.k, curTemp.v);
-
-			msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-			msg->topic = malloc(128);
-			msg->message = malloc(128);
-			msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
-			sprintf(msg->topic, "%s/state", args.mqtt.topic);
-			sprintf(msg->message, "{\"state\":%d}", lightState);
+			mqtt_publish_temperature(0);
+			if (oldstate != lightState)
+			    mqtt_publish_state();
 		}
-		else if (strcmp(subtopic_name, "hs/set") == 0)
+		else if (strcmp(subtopic_name, "color/set") == 0)
 		{
 			memset(&curCol, 0, sizeof(curCol));
 			memset(&curTemp, 0, sizeof(curTemp));
 
 			size_t len = published->application_message_size;
-			char *data = malloc(len + 1);
-			memcpy(data, published->application_message, len);
+			char *data = tmpdata;
 
 			size_t i;
 			for (i = 0; i < len; ++i)
@@ -806,10 +808,10 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 				segment++;
 			}
 
-			free(data);
-
+			curHSV.v = curBright;
 			hsv2rgb(&curHSV, &curCol);
 
+                        int oldstate = lightState;
 			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
 				lightState = LIGHTSTATE_ON;
 			else
@@ -818,29 +820,23 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			printf("New color: [ %.2f, %.2f, %.2f ] => [ %i, %i, %i ]\n", (curHSV.h / 255.f) * 360.f, curHSV.s / 255.f, curHSV.v / 255.f, curCol.r, curCol.g, curCol.b);
 			board_write_rgb(&board, &curCol);
 
-			struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-			msg->topic = malloc(128);
-			msg->message = malloc(128);
-			msg->flags = MQTT_PUBLISH_QOS_0;
-			sprintf(msg->topic, "%s/hsv", args.mqtt.topic);
-			sprintf(msg->message, "{\"h\":%f,\"s\":%f,\"v\":%f}", (curHSV.h / 255.f) * 360.f, curHSV.s / 255.f, curHSV.v / 255.f);
-
-			msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-			msg->topic = malloc(128);
-			msg->message = malloc(128);
-			msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
-			sprintf(msg->topic, "%s/state", args.mqtt.topic);
-			sprintf(msg->message, "{\"state\":%d}", lightState);
+			mqtt_publish_color(0);
+			if (oldstate != lightState)
+			    mqtt_publish_state();
 		}
-		else if (strcmp(subtopic_name, "v/set") == 0)
+		else if (strcmp(subtopic_name, "brightness/set") == 0)
 		{
 			memset(&curCol, 0, sizeof(curCol));
 			memset(&curTemp, 0, sizeof(curTemp));
 
-			curHSV.v = (uint8_t)atoi((const char*)published->application_message);
+			curBright = (uint8_t)atoi(tmpdata);
+			curHSV.v = curBright;
+
+			printf("value: %u\n", curBright);
 
 			hsv2rgb(&curHSV, &curCol);
 
+                        int oldstate = lightState;
 			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
 				lightState = LIGHTSTATE_ON;
 			else
@@ -849,72 +845,9 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			printf("New color: [ %.2f, %.2f, %.2f ] => [ %i, %i, %i ]\n", (curHSV.h / 255.f) * 360.f, curHSV.s / 255.f, curHSV.v / 255.f, curCol.r, curCol.g, curCol.b);
 			board_write_rgb(&board, &curCol);
 
-			struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-			msg->topic = malloc(128);
-			msg->message = malloc(128);
-			msg->flags = MQTT_PUBLISH_QOS_0;
-			sprintf(msg->topic, "%s/hsv", args.mqtt.topic);
-			sprintf(msg->message, "{\"h\":%f,\"s\":%f,\"v\":%f}", (curHSV.h / 255.f) * 360.f, curHSV.s / 255.f, curHSV.v / 255.f);
-
-			msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-			msg->topic = malloc(128);
-			msg->message = malloc(128);
-			msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
-			sprintf(msg->topic, "%s/state", args.mqtt.topic);
-			sprintf(msg->message, "{\"state\":%d}", lightState);
-		}
-		else if (strcmp(subtopic_name, "hsv/set") == 0)
-		{
-			memset(&curCol, 0, sizeof(curCol));
-			memset(&curTemp, 0, sizeof(curTemp));
-
-			size_t len = published->application_message_size;
-			char *data = malloc(len + 1);
-			memcpy(data, published->application_message, len);
-
-			size_t i;
-			for (i = 0; i < len; ++i)
-				if (data[i] == '&' || data[i] == '=')
-					data[i] = 0;
-
-			for (i = 0; i < len;)
-			{
-				char* cur = &(data[i]);
-
-				i += strlen(cur) + 1;
-				if (strcasecmp(cur, "h") == 0 || strcasecmp(cur, "hue") == 0)
-					curHSV.h = (uint8_t)((atof(data + i) / 360.f) * 255);
-				else if (strcasecmp(cur, "s") == 0 || strcasecmp(cur, "saturation") == 0)
-					curHSV.s = (uint8_t)(atof(data + i) * 255);
-				else if (strcasecmp(cur, "v") == 0 || strcasecmp(cur, "value") == 0)
-					curHSV.v = (uint8_t)(atof(data + i) * 255);
-			}
-
-			free(data);
-
-			hsv2rgb(&curHSV, &curCol);
-
-			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
-				lightState = LIGHTSTATE_ON;
-			else
-				lightState = LIGHTSTATE_OFF;
-
-			printf("New color: [ %.2f, %.2f, %.2f ] => [ %i, %i, %i ]\n", (curHSV.h / 255.f) * 360.f, curHSV.s / 255.f, curHSV.v / 255.f, curCol.r, curCol.g, curCol.b);
-			board_write_rgb(&board, &curCol);
-
-			struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-			msg->topic = malloc(128);
-			msg->message = malloc(128);
-			msg->flags = MQTT_PUBLISH_QOS_0;
-			sprintf(msg->topic, "%s/hsv", args.mqtt.topic);
-			sprintf(msg->message, "{\"h\":%f,\"s\":%f,\"v\":%f}", (curHSV.h / 255.f) * 360.f, curHSV.s / 255.f, curHSV.v / 255.f);
-
-			msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-			msg->topic = malloc(128);
-			msg->message = malloc(128);
-			msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
-			sprintf(msg->topic, "%s/state", args.mqtt.topic);
-			sprintf(msg->message, "{\"state\":%d}", lightState);
+			mqtt_publish_brightness();
+			if (oldstate != lightState)
+			    mqtt_publish_state();
 		}
 		else if (strcmp(subtopic_name, "rgb/set") == 0)
 		{
@@ -922,29 +855,29 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			memset(&curTemp, 0, sizeof(curTemp));
 
 			size_t len = published->application_message_size;
-			char *data = malloc(len + 1);
-			memcpy(data, published->application_message, len);
+			char *data = tmpdata;
 
 			size_t i;
 			for (i = 0; i < len; ++i)
-				if (data[i] == '&' || data[i] == '=')
+				if (data[i] == ',')
 					data[i] = 0;
 
-			for (i = 0; i < len;)
+			uint8_t segment = 0;
+			for (i = 0; i < len && segment < 3;)
 			{
 				char* cur = &(data[i]);
 
 				i += strlen(cur) + 1;
-				if (strcasecmp(cur, "r") == 0 || strcasecmp(cur, "red") == 0)
-					curCol.r = atoi(&(data[i]));
-				else if (strcasecmp(cur, "g") == 0 || strcasecmp(cur, "green") == 0)
-					curCol.g = atoi(&(data[i]));
-				else if (strcasecmp(cur, "b") == 0 || strcasecmp(cur, "blue") == 0)
-					curCol.b = atoi(&(data[i]));
+				if (segment == 0)
+					curCol.r = (uint8_t)((atof(cur) / 360.f) * curBright);
+				else if (segment == 1)
+					curCol.g = (uint8_t)((atof(cur) / 100.f) * curBright);
+				else if (segment == 2)
+					curCol.b = (uint8_t)((atof(cur) / 100.f) * curBright);
+				segment++;
 			}
 
-			free(data);
-
+                        int oldstate = lightState;
 			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
 				lightState = LIGHTSTATE_ON;
 			else
@@ -953,22 +886,13 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			printf("New color: [ %i, %i, %i ]\n", curCol.r, curCol.g, curCol.b);
 			board_write_rgb(&board, &curCol);
 
-			struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-			msg->topic = malloc(128);
-			msg->message = malloc(128);
-			msg->flags = MQTT_PUBLISH_QOS_0;
-			sprintf(msg->topic, "%s/rgb", args.mqtt.topic);
-			sprintf(msg->message, "{\"r\":%d,\"g\":%d,\"b\":%d}", curCol.r, curCol.g, curCol.b);
-
-			msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-			msg->topic = malloc(128);
-			msg->message = malloc(128);
-			msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
-			sprintf(msg->topic, "%s/state", args.mqtt.topic);
-			sprintf(msg->message, "{\"state\":%d}", lightState);
+			mqtt_publish_rgb(0);
+			if (oldstate != lightState)
+			    mqtt_publish_state();
 		}
 	}
 
+	free(tmpdata);
 	free(topic_name);
 }
 
@@ -981,9 +905,9 @@ void* mqtt_worker(void* unused)
 		mqtt_sync(&mqtt);
 		usleep(100000U);
 
-		for (int i = 0; i < 4; ++i)
+		for (int i = 0; i < MQTT_QUEUELEN; ++i)
 		{
-			if (mqtt_messages[i].topic != NULL && mqtt_messages[i].message != NULL)
+			if (mqtt_messages[i].ready == 1)
 			{
 				printf("Publishing %s to MQTT topic %s\n", mqtt_messages[i].message, mqtt_messages[i].topic);
 				mqtt_publish(&mqtt, mqtt_messages[i].topic, mqtt_messages[i].message, strlen(mqtt_messages[i].message), mqtt_messages[i].flags);
@@ -994,6 +918,7 @@ void* mqtt_worker(void* unused)
 				mqtt_messages[i].topic = NULL;
 				mqtt_messages[i].message = NULL;
 				mqtt_messages[i].flags = 0;
+				mqtt_messages[i].ready = 0;
 			}
 		}
 	}

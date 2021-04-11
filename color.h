@@ -3,7 +3,8 @@
 
 struct _hsv_t
 {
-	unsigned char h, s, v;
+	unsigned short h;
+	unsigned char s, v;
 };
 typedef struct _hsv_t hsv_t;
 
