@@ -732,7 +732,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 	memcpy(tmpdata, published->application_message, published->application_message_size);
 	tmpdata[published->application_message_size] = '\0';
 
-	printf("Received %luB publish \"%s\" to %s.\n", published->application_message_size, tmpdata, topic_name);
+	printf("Received %zuB publish \"%s\" to %s.\n", published->application_message_size, tmpdata, topic_name);
 
 	if (strncmp(topic_name, args.mqtt.topic, strlen(args.mqtt.topic)) == 0)
 	{
