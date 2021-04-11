@@ -21,8 +21,13 @@ board.o: board.h board.c
 gpio.o: gpio.h gpio.c
 	$(CC) -c gpio.c $(CFLAGS)
 
-light: main.c color.o http.o gpio.o board.o
-	$(CC) -lm main.c color.o http.o gpio.o board.o -o light $(CFLAGS)
+mqtt.o: mqtt.h mqtt.c
+	$(CC) -c mqtt.c $(CLFAGS)
+mqtt_pal.o: mqtt_pal.h mqtt_pal.c
+	$(CC) -c mqtt_pal.c $(CLFAGS)
+
+light: main.c color.o http.o gpio.o board.o mqtt.o mqtt_pal.o
+	$(CC) -lm -lpthread main.c color.o http.o gpio.o board.o mqtt.o mqtt_pal.o -o light $(CFLAGS)
 
 .PHONY: clean
 clean:

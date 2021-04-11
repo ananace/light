@@ -4,12 +4,12 @@
 
 #define CLAMP(a, min, max) (a < min ? min : (a > max ? max : a))
 
-int temperature2rgb(unsigned int temp, rgb_t* rgb)
+int temperature2rgb(const temp_t *temp, rgb_t* rgb)
 {
-	temp = CLAMP(temp, 1000, 40000);
+	int temperature = CLAMP(temp->k, 1000, 40000);
 
 	float calc;
-	unsigned short frac = temp / 100;
+	unsigned short frac = temperature / 100;
 	if (frac <= 66)
 		rgb->r = 255;
 	else
@@ -42,6 +42,10 @@ int temperature2rgb(unsigned int temp, rgb_t* rgb)
 		calc = 138.5177312231f * log(calc) - 305.0447927307f;
 		rgb->b = CLAMP(calc, 0, 255);
 	}
+
+	rgb->r *= temp->v;
+	rgb->g *= temp->v;
+	rgb->b *= temp->v;
 
 	return 0;
 }

@@ -13,7 +13,14 @@ struct _rgb_t
 };
 typedef struct _rgb_t rgb_t;
 
-int temperature2rgb(unsigned int temp, rgb_t* rgb);
+struct _temp_t
+{
+	unsigned int k;
+	float v;
+};
+typedef struct _temp_t temp_t;
+
+int temperature2rgb(const temp_t*, rgb_t*);
 int hsv2rgb(const hsv_t*, rgb_t*);
 int rgb2hsv(const rgb_t*, hsv_t*);
 
