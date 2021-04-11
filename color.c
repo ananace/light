@@ -63,7 +63,7 @@ int hsv2rgb(const hsv_t* hsv, rgb_t* rgb)
 	}
 
 	region = hsv->h / 60;
-	remainder = (hsv->h - (region * 60)) * 6;
+	remainder = (hsv->h % 60) * 6;
 
 	p = (hsv->v * (255 - hsv->s)) >> 8;
 	q = (hsv->v * (255 - ((hsv->s * remainder) >> 8))) >> 8;

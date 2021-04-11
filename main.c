@@ -802,7 +802,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 
 				i += strlen(cur) + 1;
 				if (segment == 0)
-					curHSV.h = (uint8_t)((atof(cur) / 360.f) * 255);
+					curHSV.h = (uint16_t)atof(cur);
 				else if (segment == 1)
 					curHSV.s = (uint8_t)((atof(cur) / 100.f) * 255);
 				segment++;
