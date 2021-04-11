@@ -309,6 +309,21 @@ int main(int argc, char** argv)
 	sigint(0);
 }
 
+void print_rgb()
+{
+    printf("New color: [ %i, %i, %i ]\n", curCol.r, curCol.g, curCol.b);
+}
+
+void print_hsv()
+{
+    printf("New color: [ %u, %.2f, %.2f ] => [ %i, %i, %i ]\n", curHSV.h, (curHSV.s / 255.f) * 100.f, (curHSV.v / 255.f) * 100.f, curCol.r, curCol.g, curCol.b);
+}
+
+void print_temp()
+{
+    printf("New color: %iK @%i%% => [ %i, %i, %i ]\n", curTemp.k, (int)(curTemp.v * 100), curCol.r, curCol.g, curCol.b);
+}
+
 void mqtt_publish_state()
 {
 	if (mqtt_enabled == 0)
@@ -529,7 +544,7 @@ void* http_worker(void* unused)
 					else
 						lightState = LIGHTSTATE_OFF;
 
-					printf("New color: %iK @%i%% => [ %i, %i, %i ]\n", curTemp.k, (int)(curTemp.v * 100), curCol.r, curCol.g, curCol.b);
+                                        print_temp();
 					board_write_rgb(&board, &curCol);
 
 					mqtt_publish_temperature(1);
@@ -599,7 +614,7 @@ void* http_worker(void* unused)
 
 					curBright = (uint8_t)((int)(curCol.r + curCol.g + curCol.b) / 3);
 
-					printf("New color: [ %i, %i, %i ]\n", curCol.r, curCol.g, curCol.b);
+					print_rgb();
 					board_write_rgb(&board, &curCol);
 
 					mqtt_publish_rgb(1);
@@ -678,7 +693,7 @@ void* http_worker(void* unused)
 					else
 						lightState = LIGHTSTATE_OFF;
 
-					printf("New color: [ %.2f, %.2f, %.2f ] => [ %i, %i, %i ]\n", (curHSV.h / 255.f) * 360.f, curHSV.s / 255.f, curHSV.v / 255.f, curCol.r, curCol.g, curCol.b);
+                                        print_hsv();
 					board_write_rgb(&board, &curCol);
 
 					mqtt_publish_color(1);
@@ -775,7 +790,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			else
 				lightState = LIGHTSTATE_OFF;
 
-			printf("New color: %iK @%i%% => [ %i, %i, %i ]\n", curTemp.k, (int)(curTemp.v * 100), curCol.r, curCol.g, curCol.b);
+			print_temp();
 			board_write_rgb(&board, &curCol);
 
 			mqtt_publish_temperature(0);
@@ -817,7 +832,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			else
 				lightState = LIGHTSTATE_OFF;
 
-			printf("New color: [ %.2f, %.2f, %.2f ] => [ %i, %i, %i ]\n", (curHSV.h / 255.f) * 360.f, curHSV.s / 255.f, curHSV.v / 255.f, curCol.r, curCol.g, curCol.b);
+			print_hsv();
 			board_write_rgb(&board, &curCol);
 
 			mqtt_publish_color(0);
@@ -832,8 +847,6 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			curBright = (uint8_t)atoi(tmpdata);
 			curHSV.v = curBright;
 
-			printf("value: %u\n", curBright);
-
 			hsv2rgb(&curHSV, &curCol);
 
                         int oldstate = lightState;
@@ -842,7 +855,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			else
 				lightState = LIGHTSTATE_OFF;
 
-			printf("New color: [ %.2f, %.2f, %.2f ] => [ %i, %i, %i ]\n", (curHSV.h / 255.f) * 360.f, curHSV.s / 255.f, curHSV.v / 255.f, curCol.r, curCol.g, curCol.b);
+			print_hsv();
 			board_write_rgb(&board, &curCol);
 
 			mqtt_publish_brightness();
@@ -883,7 +896,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			else
 				lightState = LIGHTSTATE_OFF;
 
-			printf("New color: [ %i, %i, %i ]\n", curCol.r, curCol.g, curCol.b);
+			print_rgb();
 			board_write_rgb(&board, &curCol);
 
 			mqtt_publish_rgb(0);
