@@ -48,6 +48,7 @@ int http_enabled = 0, mqtt_enabled = 0;
 pthread_t http_thread, mqtt_thread;
 
 void publish_callback(void** unused, struct mqtt_response_publish *published);
+void reconnect_callback(mqtt_t* unused, void** reconnect_ptr);
 
 void* http_worker(void*);
 void* mqtt_worker(void*);
@@ -57,13 +58,13 @@ void sigint(int sig)
 	(void)sig;
 
 	running = 0;
-        if (http_enabled == 1)
-                pthread_cancel(http_thread);
-        if (mqtt_enabled == 1)
-                pthread_cancel(mqtt_thread);
+	if (http_enabled == 1)
+		pthread_cancel(http_thread);
+	if (mqtt_enabled == 1)
+		pthread_cancel(mqtt_thread);
 
-        if (server.socket != 0)
-                http_close(&server);
+	if (server.socket != 0)
+		http_close(&server);
 	if (mqtt.socketfd != 0)
 		mqtt_disconnect(&mqtt);
 	board_cleanup(&board);
@@ -251,50 +252,16 @@ int main(int argc, char** argv)
 	if (strlen(args.mqtt.addr) != 0)
 	{
 		mqtt_enabled = 1;
-		int fd = open_nb_socket(args.mqtt.addr, args.mqtt.port);
-		if (fd == -1) {
-			fprintf(stderr, "Failed to open mqtt socket\n");
-			return -1;
-		}
-
 		mqtt_sendbuf = malloc(2048);
 		mqtt_recvbuf = malloc(1024);
 
-		mqtt_init(&mqtt, fd, mqtt_sendbuf, 2048, mqtt_recvbuf, 1024, publish_callback);
-
-		// TODO Authed sessions
-		const char* client_id = "thelightmeister";
-
-		printf("Connecting to MQTT broker...\n");
-		uint8_t connect_flags = MQTT_CONNECT_CLEAN_SESSION;
-		mqtt_connect(&mqtt, client_id, NULL, NULL, 0, NULL, NULL, connect_flags, 400);
-
-		if (mqtt.error != MQTT_OK)
-		{
-			fprintf(stderr, "Failed to connect to MQTT (%s)\n", mqtt_error_str(mqtt.error));
-			return -1;
-		}
-
-		printf("Subscribing to topics...\n");
-		char topic[128];
-		sprintf(topic, "%s/state/set", args.mqtt.topic);
-		mqtt_subscribe(&mqtt, topic, 0);
-		sprintf(topic, "%s/temperature/set", args.mqtt.topic);
-		mqtt_subscribe(&mqtt, topic, 0);
-		sprintf(topic, "%s/color/set", args.mqtt.topic);
-		mqtt_subscribe(&mqtt, topic, 0);
-		sprintf(topic, "%s/brightness/set", args.mqtt.topic);
-		mqtt_subscribe(&mqtt, topic, 0);
-		sprintf(topic, "%s/rgb/set", args.mqtt.topic);
-		mqtt_subscribe(&mqtt, topic, 0);
+		mqtt_init_reconnect(&mqtt, reconnect_callback, NULL, publish_callback);
 
 		if (pthread_create(&mqtt_thread, NULL, &mqtt_worker, NULL))
 		{
 			fprintf(stderr, "Failed to start MQTT worker thread.\n");
 			return -1;
 		}
-
-		printf("MQTT online and handling %s/*.\n", args.mqtt.topic);
 	}
 
 	signal(SIGINT, sigint);
@@ -311,17 +278,17 @@ int main(int argc, char** argv)
 
 void print_rgb()
 {
-    printf("New color: [ %i, %i, %i ]\n", curCol.r, curCol.g, curCol.b);
+	printf("New color: [ %i, %i, %i ]\n", curCol.r, curCol.g, curCol.b);
 }
 
 void print_hsv()
 {
-    printf("New color: [ %u, %.2f, %.2f ] => [ %i, %i, %i ]\n", curHSV.h, (curHSV.s / 255.f) * 100.f, (curHSV.v / 255.f) * 100.f, curCol.r, curCol.g, curCol.b);
+	printf("New color: [ %u, %.2f, %.2f ] => [ %i, %i, %i ]\n", curHSV.h, (curHSV.s / 255.f) * 100.f, (curHSV.v / 255.f) * 100.f, curCol.r, curCol.g, curCol.b);
 }
 
 void print_temp()
 {
-    printf("New color: %iK @%i%% => [ %i, %i, %i ]\n", curTemp.k, (int)(curTemp.v * 100), curCol.r, curCol.g, curCol.b);
+	printf("New color: %iK @%i%% => [ %i, %i, %i ]\n", curTemp.k, (int)(curTemp.v * 100), curCol.r, curCol.g, curCol.b);
 }
 
 void mqtt_publish_state()
@@ -544,7 +511,7 @@ void* http_worker(void* unused)
 					else
 						lightState = LIGHTSTATE_OFF;
 
-                                        print_temp();
+					print_temp();
 					board_write_rgb(&board, &curCol);
 
 					mqtt_publish_temperature(1);
@@ -693,7 +660,7 @@ void* http_worker(void* unused)
 					else
 						lightState = LIGHTSTATE_OFF;
 
-                                        print_hsv();
+					print_hsv();
 					board_write_rgb(&board, &curCol);
 
 					mqtt_publish_color(1);
@@ -784,7 +751,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			curTemp.v = curBright;
 			temperature2rgb(&curTemp, &curCol);
 
-                        int oldstate = lightState;
+			int oldstate = lightState;
 			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
 				lightState = LIGHTSTATE_ON;
 			else
@@ -795,7 +762,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 
 			mqtt_publish_temperature(0);
 			if (oldstate != lightState)
-			    mqtt_publish_state();
+				mqtt_publish_state();
 		}
 		else if (strcmp(subtopic_name, "color/set") == 0)
 		{
@@ -826,7 +793,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			curHSV.v = curBright;
 			hsv2rgb(&curHSV, &curCol);
 
-                        int oldstate = lightState;
+			int oldstate = lightState;
 			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
 				lightState = LIGHTSTATE_ON;
 			else
@@ -837,7 +804,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 
 			mqtt_publish_color(0);
 			if (oldstate != lightState)
-			    mqtt_publish_state();
+				mqtt_publish_state();
 		}
 		else if (strcmp(subtopic_name, "brightness/set") == 0)
 		{
@@ -849,7 +816,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 
 			hsv2rgb(&curHSV, &curCol);
 
-                        int oldstate = lightState;
+			int oldstate = lightState;
 			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
 				lightState = LIGHTSTATE_ON;
 			else
@@ -860,7 +827,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 
 			mqtt_publish_brightness();
 			if (oldstate != lightState)
-			    mqtt_publish_state();
+				mqtt_publish_state();
 		}
 		else if (strcmp(subtopic_name, "rgb/set") == 0)
 		{
@@ -890,7 +857,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 				segment++;
 			}
 
-                        int oldstate = lightState;
+			int oldstate = lightState;
 			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
 				lightState = LIGHTSTATE_ON;
 			else
@@ -901,12 +868,61 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 
 			mqtt_publish_rgb(0);
 			if (oldstate != lightState)
-			    mqtt_publish_state();
+				mqtt_publish_state();
 		}
 	}
 
 	free(tmpdata);
 	free(topic_name);
+}
+
+void reconnect_callback(mqtt_t* unused, void **unused2)
+{
+	(void)unused;
+	(void)unused2;
+
+	if (mqtt.error != MQTT_ERROR_INITIAL_RECONNECT)
+	{
+		close(mqtt.socketfd);
+		fprintf(stderr, "Reconnecting MQTT in error state %s.\n", mqtt_error_str(mqtt.error));
+	}
+
+	mqtt_enabled = 1;
+	int fd = open_nb_socket(args.mqtt.addr, args.mqtt.port);
+	if (fd == -1) {
+		fprintf(stderr, "Failed to open mqtt socket\n");
+		return;
+	}
+
+	mqtt_reinit(&mqtt, fd, mqtt_sendbuf, 2048, mqtt_recvbuf, 1024);
+
+	// TODO Authed sessions
+	const char* client_id = "thelightmeister";
+
+	printf("Connecting to MQTT broker...\n");
+	uint8_t connect_flags = MQTT_CONNECT_CLEAN_SESSION;
+	mqtt_connect(&mqtt, client_id, NULL, NULL, 0, NULL, NULL, connect_flags, 400);
+
+	if (mqtt.error != MQTT_OK)
+	{
+		fprintf(stderr, "Failed to connect to MQTT (%s)\n", mqtt_error_str(mqtt.error));
+		return;
+	}
+
+	printf("Subscribing to topics...\n");
+	char topic[128];
+	sprintf(topic, "%s/state/set", args.mqtt.topic);
+	mqtt_subscribe(&mqtt, topic, 0);
+	sprintf(topic, "%s/temperature/set", args.mqtt.topic);
+	mqtt_subscribe(&mqtt, topic, 0);
+	sprintf(topic, "%s/color/set", args.mqtt.topic);
+	mqtt_subscribe(&mqtt, topic, 0);
+	sprintf(topic, "%s/brightness/set", args.mqtt.topic);
+	mqtt_subscribe(&mqtt, topic, 0);
+	sprintf(topic, "%s/rgb/set", args.mqtt.topic);
+	mqtt_subscribe(&mqtt, topic, 0);
+
+	printf("MQTT connected and handling %s/*.\n", args.mqtt.topic);
 }
 
 void* mqtt_worker(void* unused)
