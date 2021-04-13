@@ -305,6 +305,19 @@ void mqtt_publish_state()
 	snprintf(msg->message, 4, "%s", (lightState == LIGHTSTATE_ON) ? "on" : "off");
 	msg->ready = 1;
 }
+void mqtt_publish_brightness()
+{
+	if (mqtt_enabled == 0)
+		return;
+
+	struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
+	msg->topic = malloc(128);
+	msg->message = malloc(4);
+	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
+	snprintf(msg->topic, 128, "%s/brightness", args.mqtt.topic);
+	snprintf(msg->message, 4, "%u", curBright);
+	msg->ready = 1;
+}
 void mqtt_publish_temperature(int withBright)
 {
 	if (mqtt_enabled == 0)
@@ -318,16 +331,8 @@ void mqtt_publish_temperature(int withBright)
 	snprintf(msg->message, 6, "%u", curTemp.k);
 	msg->ready = 1;
 
-	if (withBright == 0)
-		return;
-
-	msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-	msg->topic = malloc(128);
-	msg->message = malloc(4);
-	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
-	snprintf(msg->topic, 128, "%s/brightness", args.mqtt.topic);
-	snprintf(msg->message, 4, "%u", curBright);
-	msg->ready = 1;
+	if (withBright == 1)
+            mqtt_publish_brightness();
 }
 void mqtt_publish_rgb(int withBright)
 {
@@ -342,16 +347,8 @@ void mqtt_publish_rgb(int withBright)
 	snprintf(msg->message, 12, "%u,%u,%u", curCol.r, curCol.g, curCol.b);
 	msg->ready = 1;
 
-	if (withBright == 0)
-		return;
-
-	msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-	msg->topic = malloc(128);
-	msg->message = malloc(4);
-	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
-	snprintf(msg->topic, 128, "%s/brightness", args.mqtt.topic);
-	snprintf(msg->message, 4, "%u", curBright);
-	msg->ready = 1;
+	if (withBright == 1)
+            mqtt_publish_brightness();
 }
 void mqtt_publish_color(int withBright)
 {
@@ -366,29 +363,8 @@ void mqtt_publish_color(int withBright)
 	snprintf(msg->message, 6, "%u,%u", curHSV.h, (uint8_t)((curHSV.s / 255.f) * 100));
 	msg->ready = 1;
 
-	if (withBright == 0)
-		return;
-
-	msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-	msg->topic = malloc(128);
-	msg->message = malloc(4);
-	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
-	snprintf(msg->topic, 128, "%s/brightness", args.mqtt.topic);
-	snprintf(msg->message, 4, "%u", curBright);
-	msg->ready = 1;
-}
-void mqtt_publish_brightness()
-{
-	if (mqtt_enabled == 0)
-		return;
-
-	struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
-	msg->topic = malloc(128);
-	msg->message = malloc(4);
-	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
-	snprintf(msg->topic, 128, "%s/brightness", args.mqtt.topic);
-	snprintf(msg->message, 4, "%u", curBright);
-	msg->ready = 1;
+	if (withBright == 1)
+            mqtt_publish_brightness();
 }
 
 void* http_worker(void* unused)

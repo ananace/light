@@ -24,7 +24,7 @@ Published MQTT topics; (Using the default prefix of `light`)
 - `light/temperature` - blackbody radiation in Kelvin (`1000..40000`)
 - `light/rgb` - comma-separated RGB color (`0..255`)
 - `light/color` - comma-separated hue (`0..360`) and saturation (`0..100`)
-- `light/brightness` - brightness (`0..255`)
+- `light/brightness` - brightness (`0..100`)
 
 Subscribed MQTT topics; (Using the default prefix of `light`)
 - `light/state/set` - Accepts `on`|`off`
