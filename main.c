@@ -1,4 +1,5 @@
 #include "board.h"
+#include "color.h"
 #include "gpio.h"
 #include "http.h"
 #include "mqtt.h"
@@ -849,11 +850,11 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 
 				i += strlen(cur) + 1;
 				if (segment == 0)
-					curCol.r = (uint8_t)((atof(cur) / 360.f) * curBright);
+					curCol.r = (uint8_t)((atoi(cur) / 255.f) * curBright);
 				else if (segment == 1)
-					curCol.g = (uint8_t)((atof(cur) / 100.f) * curBright);
+					curCol.g = (uint8_t)((atoi(cur) / 255.f) * curBright);
 				else if (segment == 2)
-					curCol.b = (uint8_t)((atof(cur) / 100.f) * curBright);
+					curCol.b = (uint8_t)((atoi(cur) / 255.f) * curBright);
 				segment++;
 			}
 
@@ -862,6 +863,10 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 				lightState = LIGHTSTATE_ON;
 			else
 				lightState = LIGHTSTATE_OFF;
+
+                        // Store RGB as HSV, to support changing brightness
+                        rgb2hsv(&curCol, &curHSV);
+                        curHSV.v = curBright;
 
 			print_rgb();
 			board_write_rgb(&board, &curCol);
