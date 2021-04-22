@@ -955,8 +955,9 @@ void reconnect_callback(mqtt_t* unused, void **unused2)
 			"\"bri_cmd_t\":\"~brightness/set\","
 			"\"hs_stat_t\":\"~color\","
 			"\"hs_cmd_t\":\"~color/set\","
+			"\"uniq_id\":\"light_%s\","
 			"\"ret\":true"
-			"}", args.mqtt.name, args.mqtt.topic);
+			"}", args.mqtt.name, args.mqtt.topic, args.mqtt.topic);
 
 		printf("Publishing %dB of configuration information to %s.\n", len, topic);
 		mqtt_publish(&mqtt, topic, data, len, MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN);
