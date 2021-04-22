@@ -154,7 +154,10 @@ int main(int argc, char** argv)
 	if (args.http.port == UINT16_MAX) args.http.port = 4567;
 	if (args.mqtt.port == UINT16_MAX) args.mqtt.port = 1883;
 	if (strlen(args.mqtt.real_topic) == 0)
+	{
 		args.mqtt.topic = "light";
+		args.mqtt.real_topic = "light";
+	}
 	else
 	{
 		char topic[128];
