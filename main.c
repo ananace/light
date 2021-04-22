@@ -132,7 +132,7 @@ int main(int argc, char** argv)
 			args.mqtt.port = atoi(argv[++i]);
 		else if (strcmp(argv[i], "-mt") == 0 || strcmp(argv[i], "--mqtt-topic") == 0)
 			args.mqtt.real_topic = argv[++i];
-		else if (strcmp(argv[i], "-m+") == 0 || strcmp(argv[i], "--mqtt-publish") == 0)
+		else if (strcmp(argv[i], "-mP") == 0 || strcmp(argv[i], "--mqtt-publish") == 0)
 			args.mqtt.publish = argv[++i];
 		else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
 			mode = 254;
@@ -886,6 +886,7 @@ void reconnect_callback(mqtt_t* unused, void **unused2)
 	int fd = open_nb_socket(args.mqtt.addr, args.mqtt.port);
 	if (fd == -1) {
 		fprintf(stderr, "Failed to open mqtt socket\n");
+		running = 0;
 		return;
 	}
 
@@ -901,6 +902,7 @@ void reconnect_callback(mqtt_t* unused, void **unused2)
 	if (mqtt.error != MQTT_OK)
 	{
 		fprintf(stderr, "Failed to connect to MQTT (%s)\n", mqtt_error_str(mqtt.error));
+		running = 0;
 		return;
 	}
 
@@ -923,16 +925,18 @@ void reconnect_callback(mqtt_t* unused, void **unused2)
 
 		char data[512];
 		int len = snprintf(data, 512, "{"
-			"\"stat_t\":\"%s/state\","
+			"\"name\":\"%s\","
+			"\"~\":\"%s/\","
+			"\"stat_t\":\"~state\","
 			"\"pl_on\":\"on\","
 			"\"pl_off\":\"off\","
-			"\"cmd_t\":\"%s/state/set\","
-			"\"bri_stat_t\":\"%s/brightness\","
-			"\"bri_cmd_t\":\"%s/brightness/set\","
-			"\"hs_stat_t\":\"%s/color\","
-			"\"hs_cmd_t\":\"%s/color/set\","
+			"\"cmd_t\":\"~state/set\","
+			"\"bri_stat_t\":\"~brightness\","
+			"\"bri_cmd_t\":\"~brightness/set\","
+			"\"hs_stat_t\":\"~color\","
+			"\"hs_cmd_t\":\"~color/set\","
 			"\"ret\":true"
-			"}", args.mqtt.topic, args.mqtt.topic, args.mqtt.topic, args.mqtt.topic, args.mqtt.topic, args.mqtt.topic);
+			"}", args.mqtt.real_topic, args.mqtt.topic);
 
 		printf("Publishing %dB of configuration information to %s.\n", len, topic);
 		mqtt_publish(&mqtt, topic, data, len, MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN);
