@@ -941,7 +941,7 @@ void reconnect_callback(mqtt_t* unused, void **unused2)
 
 	if (strlen(args.mqtt.publish) > 0)
 	{
-		snprintf(topic, 128, "%s/light/%s/config", args.mqtt.publish, args.mqtt.slug);
+		snprintf(topic, 128, "%s/light/%s/light/config", args.mqtt.publish, args.mqtt.slug);
 
 		char data[512];
 		int len = snprintf(data, 512, "{"
