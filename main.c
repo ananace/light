@@ -762,18 +762,11 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			curTemp.v = curBright;
 			temperature2rgb(&curTemp, &curCol);
 
-			int oldstate = lightState;
-			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
-				lightState = LIGHTSTATE_ON;
-			else
-				lightState = LIGHTSTATE_OFF;
-
 			print_temp();
-			board_write_rgb(&board, &curCol);
+			if (lightState == LIGHTSTATE_ON)
+				board_write_rgb(&board, &curCol);
 
 			mqtt_publish_temperature(0);
-			if (oldstate != lightState)
-				mqtt_publish_state();
 		}
 		else if (strcmp(subtopic_name, "color/set") == 0)
 		{
@@ -804,18 +797,11 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			curHSV.v = curBright;
 			hsv2rgb(&curHSV, &curCol);
 
-			int oldstate = lightState;
-			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
-				lightState = LIGHTSTATE_ON;
-			else
-				lightState = LIGHTSTATE_OFF;
-
 			print_hsv();
-			board_write_rgb(&board, &curCol);
+			if (lightState == LIGHTSTATE_ON)
+				board_write_rgb(&board, &curCol);
 
 			mqtt_publish_color(0);
-			if (oldstate != lightState)
-				mqtt_publish_state();
 		}
 		else if (strcmp(subtopic_name, "brightness/set") == 0)
 		{
@@ -827,18 +813,11 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 
 			hsv2rgb(&curHSV, &curCol);
 
-			int oldstate = lightState;
-			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
-				lightState = LIGHTSTATE_ON;
-			else
-				lightState = LIGHTSTATE_OFF;
-
 			print_hsv();
-			board_write_rgb(&board, &curCol);
+			if (lightState == LIGHTSTATE_ON)
+				board_write_rgb(&board, &curCol);
 
 			mqtt_publish_brightness();
-			if (oldstate != lightState)
-				mqtt_publish_state();
 		}
 		else if (strcmp(subtopic_name, "rgb/set") == 0)
 		{
@@ -868,22 +847,15 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 				segment++;
 			}
 
-			int oldstate = lightState;
-			if (curCol.r > 0 || curCol.g > 0 || curCol.b > 0)
-				lightState = LIGHTSTATE_ON;
-			else
-				lightState = LIGHTSTATE_OFF;
-
 			// Store RGB as HSV, to support changing brightness
 			rgb2hsv(&curCol, &curHSV);
 			curHSV.v = curBright;
 
 			print_rgb();
-			board_write_rgb(&board, &curCol);
+			if (lightState == LIGHTSTATE_ON)
+				board_write_rgb(&board, &curCol);
 
 			mqtt_publish_rgb(0);
-			if (oldstate != lightState)
-				mqtt_publish_state();
 		}
 	}
 
