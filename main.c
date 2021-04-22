@@ -8,6 +8,7 @@ typedef struct mqtt_client mqtt_t;
 
 #include "posix_sockets.h"
 
+#include <ctype.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,8 +83,9 @@ struct
 
 	struct {
 		const char* addr;
-		char* topic;
-		const char* real_topic;
+		const char* topic;
+		const char* name;
+		const char* slug;
 		const char* publish;
 		uint16_t port;
 	} mqtt;
@@ -108,7 +110,8 @@ int main(int argc, char** argv)
 	memset(&args, -1, sizeof(args));
 	args.mqtt.addr = "";
 	args.mqtt.topic = "";
-	args.mqtt.real_topic = "";
+	args.mqtt.name = "";
+	args.mqtt.slug = "";
 	args.mqtt.publish = "";
 
 	if (argc < 1)
@@ -131,9 +134,12 @@ int main(int argc, char** argv)
 		else if (strcmp(argv[i], "-mp") == 0 || strcmp(argv[i], "--mqtt-port") == 0)
 			args.mqtt.port = atoi(argv[++i]);
 		else if (strcmp(argv[i], "-mt") == 0 || strcmp(argv[i], "--mqtt-topic") == 0)
-			args.mqtt.real_topic = argv[++i];
+			args.mqtt.topic = argv[++i];
 		else if (strcmp(argv[i], "-mP") == 0 || strcmp(argv[i], "--mqtt-publish") == 0)
 			args.mqtt.publish = argv[++i];
+		else if (strcmp(argv[i], "-mn") == 0 || strcmp(argv[i], "--mqtt-name") == 0)
+			args.mqtt.name = argv[++i];
+
 		else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
 			mode = 254;
 
@@ -153,17 +159,28 @@ int main(int argc, char** argv)
 	}
 	if (args.http.port == UINT16_MAX) args.http.port = 4567;
 	if (args.mqtt.port == UINT16_MAX) args.mqtt.port = 1883;
-	if (strlen(args.mqtt.real_topic) == 0)
-	{
+	if (strlen(args.mqtt.topic) == 0)
 		args.mqtt.topic = "light";
-		args.mqtt.real_topic = "light";
+	if (strlen(args.mqtt.name) == 0)
+	{
+		args.mqtt.name = args.mqtt.topic;
+		args.mqtt.slug = args.mqtt.topic;
 	}
 	else
 	{
-		char topic[128];
-		int len = snprintf(topic, 128, "light/%s", args.mqtt.real_topic);
-		args.mqtt.topic = malloc(len + 1);
-		strncpy(args.mqtt.topic, topic, len + 1);
+		int nameLen = strlen(args.mqtt.name);
+		char* slug = malloc(nameLen);
+
+		for (size_t i = 0; i < nameLen; ++i)
+		{
+			if (isalnum(args.mqtt.name[i]))
+				slug[i] = tolower(args.mqtt.name[i]);
+			else
+				slug[i] = '_';
+		}
+		slug[nameLen] = 0;
+
+		args.mqtt.slug = slug;
 	}
 
 	if (mode == 0)
@@ -349,7 +366,7 @@ void mqtt_publish_temperature(int withBright)
 	msg->ready = 1;
 
 	if (withBright == 1)
-	        mqtt_publish_brightness();
+		mqtt_publish_brightness();
 }
 void mqtt_publish_rgb(int withBright)
 {
@@ -365,7 +382,7 @@ void mqtt_publish_rgb(int withBright)
 	msg->ready = 1;
 
 	if (withBright == 1)
-	        mqtt_publish_brightness();
+		mqtt_publish_brightness();
 }
 void mqtt_publish_color(int withBright)
 {
@@ -381,7 +398,7 @@ void mqtt_publish_color(int withBright)
 	msg->ready = 1;
 
 	if (withBright == 1)
-	        mqtt_publish_brightness();
+		mqtt_publish_brightness();
 }
 
 void* http_worker(void* unused)
@@ -857,9 +874,9 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			else
 				lightState = LIGHTSTATE_OFF;
 
-	                    // Store RGB as HSV, to support changing brightness
-	                    rgb2hsv(&curCol, &curHSV);
-	                    curHSV.v = curBright;
+			// Store RGB as HSV, to support changing brightness
+			rgb2hsv(&curCol, &curHSV);
+			curHSV.v = curBright;
 
 			print_rgb();
 			board_write_rgb(&board, &curCol);
@@ -924,7 +941,7 @@ void reconnect_callback(mqtt_t* unused, void **unused2)
 
 	if (strlen(args.mqtt.publish) > 0)
 	{
-		snprintf(topic, 128, "%s/light/%s/config", args.mqtt.publish, args.mqtt.real_topic);
+		snprintf(topic, 128, "%s/light/%s/config", args.mqtt.publish, args.mqtt.slug);
 
 		char data[512];
 		int len = snprintf(data, 512, "{"
@@ -939,7 +956,7 @@ void reconnect_callback(mqtt_t* unused, void **unused2)
 			"\"hs_stat_t\":\"~color\","
 			"\"hs_cmd_t\":\"~color/set\","
 			"\"ret\":true"
-			"}", args.mqtt.real_topic, args.mqtt.topic);
+			"}", args.mqtt.name, args.mqtt.topic);
 
 		printf("Publishing %dB of configuration information to %s.\n", len, topic);
 		mqtt_publish(&mqtt, topic, data, len, MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN);
