@@ -168,7 +168,7 @@ int main(int argc, char** argv)
 	}
 	else
 	{
-		int nameLen = strlen(args.mqtt.name);
+		size_t nameLen = strlen(args.mqtt.name);
 		char* slug = malloc(nameLen);
 
 		for (size_t i = 0; i < nameLen; ++i)
