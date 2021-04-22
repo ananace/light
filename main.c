@@ -82,7 +82,9 @@ struct
 
 	struct {
 		const char* addr;
-		const char* topic;
+		char* topic;
+		const char* real_topic;
+		const char* publish;
 		uint16_t port;
 	} mqtt;
 
@@ -106,6 +108,8 @@ int main(int argc, char** argv)
 	memset(&args, -1, sizeof(args));
 	args.mqtt.addr = "";
 	args.mqtt.topic = "";
+	args.mqtt.real_topic = "";
+	args.mqtt.publish = "";
 
 	if (argc < 1)
 		return -1;
@@ -127,7 +131,9 @@ int main(int argc, char** argv)
 		else if (strcmp(argv[i], "-mp") == 0 || strcmp(argv[i], "--mqtt-port") == 0)
 			args.mqtt.port = atoi(argv[++i]);
 		else if (strcmp(argv[i], "-mt") == 0 || strcmp(argv[i], "--mqtt-topic") == 0)
-			args.mqtt.topic = argv[++i];
+			args.mqtt.real_topic = argv[++i];
+		else if (strcmp(argv[i], "-m+") == 0 || strcmp(argv[i], "--mqtt-publish") == 0)
+			args.mqtt.publish = argv[++i];
 		else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
 			mode = 254;
 
@@ -147,7 +153,15 @@ int main(int argc, char** argv)
 	}
 	if (args.http.port == UINT16_MAX) args.http.port = 4567;
 	if (args.mqtt.port == UINT16_MAX) args.mqtt.port = 1883;
-	if (strlen(args.mqtt.topic) == 0) args.mqtt.topic = "light";
+	if (strlen(args.mqtt.real_topic) == 0)
+		args.mqtt.topic = "light";
+	else
+	{
+		char topic[128];
+		int len = snprintf(topic, 128, "light/%s", args.mqtt.real_topic);
+		args.mqtt.topic = malloc(len + 1);
+		strncpy(args.mqtt.topic, topic, len + 1);
+	}
 
 	if (mode == 0)
 	{
@@ -195,18 +209,18 @@ int main(int argc, char** argv)
 	{
 		printf("Usage: %s [OPTIONS...]\n\n"
 			"Args:\n"
-			"  -S --spi        Use SPI connected BitWizard board\n"
-			"  -P --p9813      Use P9813 board\n"
-			"  -D --dummy      Use dummy board for testing\n"
+			"  -S --spi	    Use SPI connected BitWizard board\n"
+			"  -P --p9813	  Use P9813 board\n"
+			"  -D --dummy	  Use dummy board for testing\n"
 			"\n"
 			"  -p --port PORT  Specify the HTTP server port to use\n"
 			"  -ma --mqtt-addr Specify the MQTT server address to connect to\n"
 			"  -mp --mqtt-port Specify the port of the MQTT server (default 1883)\n"
 			"  -mt --mqtt-topic Specify the default topic prefix to handle (default \"light\")\n"
-			"  -h --help       Display this text\n\n"
+			"  -h --help	   Display this text\n\n"
 			"SPI args:\n"
-			"  -h --hz HZ      Change the communication hertz (default 100 000)\n"
-			"  -i --id ID      Change the board ID (default 0x90)\n\n"
+			"  -h --hz HZ	  Change the communication hertz (default 100 000)\n"
+			"  -i --id ID	  Change the board ID (default 0x90)\n\n"
 			"P9813 args:\n"
 			"  --gpiochip DEV  The dev number for /dev/gpiochip* to use (default 0)\n"
 			"  -c --clock PIN  The pin ID to use for the clock signal\n"
@@ -332,7 +346,7 @@ void mqtt_publish_temperature(int withBright)
 	msg->ready = 1;
 
 	if (withBright == 1)
-            mqtt_publish_brightness();
+	        mqtt_publish_brightness();
 }
 void mqtt_publish_rgb(int withBright)
 {
@@ -348,7 +362,7 @@ void mqtt_publish_rgb(int withBright)
 	msg->ready = 1;
 
 	if (withBright == 1)
-            mqtt_publish_brightness();
+	        mqtt_publish_brightness();
 }
 void mqtt_publish_color(int withBright)
 {
@@ -364,7 +378,7 @@ void mqtt_publish_color(int withBright)
 	msg->ready = 1;
 
 	if (withBright == 1)
-            mqtt_publish_brightness();
+	        mqtt_publish_brightness();
 }
 
 void* http_worker(void* unused)
@@ -840,9 +854,9 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 			else
 				lightState = LIGHTSTATE_OFF;
 
-                        // Store RGB as HSV, to support changing brightness
-                        rgb2hsv(&curCol, &curHSV);
-                        curHSV.v = curBright;
+	                    // Store RGB as HSV, to support changing brightness
+	                    rgb2hsv(&curCol, &curHSV);
+	                    curHSV.v = curBright;
 
 			print_rgb();
 			board_write_rgb(&board, &curCol);
@@ -902,6 +916,27 @@ void reconnect_callback(mqtt_t* unused, void **unused2)
 	mqtt_subscribe(&mqtt, topic, 0);
 	sprintf(topic, "%s/rgb/set", args.mqtt.topic);
 	mqtt_subscribe(&mqtt, topic, 0);
+
+	if (strlen(args.mqtt.publish) > 0)
+	{
+		snprintf(topic, 128, "%s/light/%s/config", args.mqtt.publish, args.mqtt.real_topic);
+
+		char data[512];
+		int len = snprintf(data, 512, "{"
+			"\"stat_t\":\"%s/state\","
+			"\"pl_on\":\"on\","
+			"\"pl_off\":\"off\","
+			"\"cmd_t\":\"%s/state/set\","
+			"\"bri_stat_t\":\"%s/brightness\","
+			"\"bri_cmd_t\":\"%s/brightness/set\","
+			"\"hs_stat_t\":\"%s/color\","
+			"\"hs_cmd_t\":\"%s/color/set\","
+			"\"ret\":true"
+			"}", args.mqtt.topic, args.mqtt.topic, args.mqtt.topic, args.mqtt.topic, args.mqtt.topic, args.mqtt.topic);
+
+		printf("Publishing %dB of configuration information to %s.\n", len, topic);
+		mqtt_publish(&mqtt, topic, data, len, MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN);
+	}
 
 	printf("MQTT connected and handling %s/*.\n", args.mqtt.topic);
 }
