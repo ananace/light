@@ -357,10 +357,10 @@ void mqtt_publish_color(int withBright)
 
 	struct mqtt_tosend *msg = &mqtt_messages[++mqtt_message_counter % MQTT_QUEUELEN];
 	msg->topic = malloc(128);
-	msg->message = malloc(6);
+	msg->message = malloc(8);
 	msg->flags = MQTT_PUBLISH_QOS_0 | MQTT_PUBLISH_RETAIN;
 	snprintf(msg->topic, 128, "%s/color", args.mqtt.topic);
-	snprintf(msg->message, 6, "%u,%u", curHSV.h, (uint8_t)((curHSV.s / 255.f) * 100));
+	snprintf(msg->message, 8, "%u,%u", curHSV.h, (uint8_t)((curHSV.s / 255.f) * 100));
 	msg->ready = 1;
 
 	if (withBright == 1)
