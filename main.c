@@ -237,6 +237,8 @@ int main(int argc, char** argv)
 			"  -ma --mqtt-addr Specify the MQTT server address to connect to\n"
 			"  -mp --mqtt-port Specify the port of the MQTT server (default 1883)\n"
 			"  -mt --mqtt-topic Specify the default topic prefix to handle (default \"light\")\n"
+			"  -mP --mqtt-publish Publish discovery information to the specified topic\n"
+			"  -mn --mqtt-name Use the given name for this light instance\n"
 			"  -h --help	   Display this text\n\n"
 			"SPI args:\n"
 			"  -h --hz HZ	  Change the communication hertz (default 100 000)\n"
@@ -255,6 +257,9 @@ int main(int argc, char** argv)
 	memset(&curTemp, 0, sizeof(curTemp));
 
 	memset(&offCol, 0, sizeof(offCol));
+
+        // Start with pure white as the configured color
+	curCol.r = curCol.g = curCol.b = 255;
 
 	if (board_write_rgb(&board, &offCol) < 0)
 	{
